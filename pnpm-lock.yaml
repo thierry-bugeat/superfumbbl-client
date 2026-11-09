@@ -28,6 +28,9 @@ importers:
       '@fumbbl40k/ffb-pitch':
         specifier: workspace:*
         version: link:../../packages/ffb-pitch
+      '@fumbbl40k/ffb-pitch3d':
+        specifier: workspace:*
+        version: link:../../packages/ffb-pitch3d
       '@fumbbl40k/ffb-protocol':
         specifier: workspace:*
         version: link:../../packages/ffb-protocol
@@ -100,6 +103,22 @@ importers:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@22.20.0)(jsdom@30.0.1)(tsx@4.22.4)
 
+  packages/ffb-pitch3d:
+    dependencies:
+      '@fumbbl40k/ffb-protocol':
+        specifier: workspace:*
+        version: link:../ffb-protocol
+      three:
+        specifier: 0.170.0
+        version: 0.170.0
+    devDependencies:
+      '@types/three':
+        specifier: 0.170.0
+        version: 0.170.0
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+
   packages/ffb-protocol:
     dependencies:
       js-md5:
@@ -127,12 +146,6 @@ importers:
       ws:
         specifier: ^8.18.0
         version: 8.21.0
-
-  packages/fly-coach:
-    dependencies:
-      '@fumbbl40k/ffb-protocol':
-        specifier: workspace:*
-        version: link:../ffb-protocol
 
 packages:
 

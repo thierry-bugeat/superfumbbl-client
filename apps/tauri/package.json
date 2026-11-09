@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@fumbbl40k/ffb-pitch": "workspace:*",
+    "@fumbbl40k/ffb-pitch3d": "workspace:*",
     "@fumbbl40k/ffb-protocol": "workspace:*",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.0.0",

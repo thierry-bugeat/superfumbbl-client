@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spectateur 3D — banc de dev</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #10140f; color: #e7efe4; font: 14px/1.4 ui-sans-serif, system-ui, sans-serif; }
+      body { display: grid; grid-template-columns: 1fr 340px; }
+      #stage { min-width: 0; min-height: 100vh; }
+      #stage canvas { display: block; width: 100%; height: 100%; }
+      aside { display: flex; flex-direction: column; gap: 8px; padding: 12px; overflow: auto; background: #182018; }
+      button, label.file { background: #2c4a32; color: inherit; border: 0; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+      .row { display: flex; flex-wrap: wrap; gap: 6px; }
+      #log { white-space: pre-wrap; font: 12px/1.35 ui-monospace, monospace; }
+      #status { color: #f0c674; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <aside>
+      <label class="file">Choisir un replay<input id="file" type="file" accept=".json,.jsonl,.txt" hidden /></label>
+      <div class="row">
+        <button id="first" type="button">Début</button>
+        <button id="prev" type="button">Précédent</button>
+        <button id="next" type="button">Suivant</button>
+        <button id="last" type="button">Fin</button>
+      </div>
+      <div class="row">
+        <button data-preset="overview" type="button">Vue d'ensemble</button>
+        <button data-preset="tribune" type="button">Tribune</button>
+        <button data-preset="top" type="button">De haut</button>
+      </div>
+      <div class="row">
+        <button data-weather="Nice" type="button">Beau</button>
+        <button data-weather="Sunny" type="button">Soleil</button>
+        <button data-weather="Sweltering Heat" type="button">Chaleur</button>
+        <button data-weather="Pouring Rain" type="button">Pluie</button>
+        <button data-weather="Blizzard" type="button">Blizzard</button>
+      </div>
+      <button id="leak" type="button">Tester 10 rechargements</button>
+      <p id="status">Aucun replay chargé. Le stade s'affiche quand même.</p>
+      <p id="diag"></p>
+      <pre id="log"></pre>
+    </aside>
+    <script type="module" src="/src/dev/spectate3d/main.ts"></script>
+  </body>
+</html>
