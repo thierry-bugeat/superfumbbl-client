@@ -1,2 +1,4 @@
-Dépose ici un replay exporté par le client (enveloppe JSON `{ version, finalState, commands }`).
-Aucun replay n'est fourni avec le dépôt : le banc de dev en demande un au chargement.
+Le banc accepte deux fichiers, choisis depuis la page (rien n'est commité ici) :
+
+- un `.jnlp` téléchargé sur FUMBBL : ticket à usage unique, le match est ensuite demandé au serveur ;
+- une enveloppe JSON `{ version, finalState, commands }` déjà téléchargée.

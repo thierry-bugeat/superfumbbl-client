@@ -44,7 +44,7 @@ export class SkyDome {
       new SphereGeometry(radius, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2),
       this.skyMaterial,
     );
-    sky.position.y = -0.1;
+    sky.position.y = 0.02;
     this.group.add(sky);
 
     const ground = new Mesh(
@@ -53,7 +53,8 @@ export class SkyDome {
     );
     ground.rotation.x = -Math.PI / 2;
     ground.rotation.z = Math.PI / 4;
-    ground.position.y = -0.12;
+    // Juste sous l'herbe (y 0.02) et les lignes (bas vers 0.024).
+    ground.position.y = 0;
     ground.receiveShadow = true;
     this.group.add(ground);
   }

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 58" width="640" height="58" aria-hidden="true">
+  <defs>
+    <linearGradient id="barFade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0b0b0b" stop-opacity="0"/>
+      <stop offset="0.07" stop-color="#121212" stop-opacity="0.55"/>
+      <stop offset="0.16" stop-color="#0e0e0e" stop-opacity="0.9"/>
+      <stop offset="0.84" stop-color="#0e0e0e" stop-opacity="0.9"/>
+      <stop offset="0.93" stop-color="#121212" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#0b0b0b" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="slash" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff3b30"/>
+      <stop offset="1" stop-color="#8e100c"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#barFade)" d="M14 20 L48 8 L96 15 L158 7 L230 14 L310 6 L400 13 L478 7 L548 14 L604 8 L630 18 L624 40 L584 50 L512 43 L430 54 L340 46 L250 54 L160 45 L86 52 L42 43 L16 34 Z"/>
+  <g fill="#1a1a1a" opacity="0.55">
+    <path d="M70 18 L150 12 L148 16 L68 22 Z"/>
+    <path d="M500 14 L590 20 L588 24 L498 18 Z"/>
+    <path d="M90 40 L180 46 L178 49 L88 43 Z"/>
+    <path d="M470 42 L560 36 L562 40 L472 46 Z"/>
+  </g>
+  <g fill="url(#slash)">
+    <path d="M246 4 L268 4 L214 56 L192 56 Z"/>
+    <path d="M292 2 L312 2 L258 58 L238 58 Z"/>
+    <path d="M338 4 L362 4 L308 56 L284 56 Z"/>
+    <path d="M386 3 L406 3 L352 57 L332 57 Z"/>
+    <path d="M430 5 L448 5 L394 55 L376 55 Z"/>
+  </g>
+</svg>

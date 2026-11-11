@@ -48,6 +48,7 @@ export type ClientStepId =
   | 'settings-account'
   | 'settings-modpacks'
   | 'settings-diagnostics'
+  | 'settings-experimental'
   | 'settings-credits'
   | 'disclaimer';
 
@@ -84,6 +85,7 @@ export const CLIENT_STEPS: readonly ClientStepId[] = [
   'settings-account',
   'settings-modpacks',
   'settings-diagnostics',
+  'settings-experimental',
   'settings-credits',
   'disclaimer',
 ];
@@ -142,7 +144,7 @@ const BAR: Record<string, { anchor: string; label: string; body: string }> = {
   'hud-bar-report': { anchor: 'hud-report', get label() { return $t('tour.bar.report'); }, get body() { return $t('tour.bar.sendsMeABug'); } },
 };
 
-/** One line per Settings tab (owner 11-03 reflow: all 13 tabs, Controls included, in rail order). */
+/** One line per Settings tab, in rail order. */
 export const SETTINGS_LINES: Record<SettingsTab, string> = {
   get general() { return $t('tour.settingsLines.general'); },
   get controls() { return $t('tour.settingsLines.controls'); },
@@ -156,6 +158,7 @@ export const SETTINGS_LINES: Record<SettingsTab, string> = {
   get account() { return $t('tour.settingsLines.account'); },
   get modpacks() { return $t('tour.settingsLines.modPacks'); },
   get diagnostics() { return $t('tour.settingsLines.diagnostics'); },
+  get experimental() { return $t('tour.settingsLines.experimental'); },
   get credits() { return $t('tour.settingsLines.credits'); },
 };
 

@@ -39,6 +39,7 @@ export class Stadium {
       this.group.add(light, light.target);
       this.lights.push(light);
     }
+    this.group.rotation.y = -Math.PI / 2;
   }
 
   /** Hauteur du sol de jeu du modèle, une fois mis à l'échelle. */

@@ -33,6 +33,9 @@ export async function createPitchGround(groundWidth: number, groundDepth: number
     color: 0x2f6b3a,
     roughness: 0.92,
     metalness: 0.02,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
   });
   const mesh = new Mesh(geometry, material);
   mesh.receiveShadow = true;

@@ -31,6 +31,7 @@ import { fetchRecentFumbblMatches, recentTeamCapNote, type FumbblRecentMatch, ty
 import { localPlayedTeamIds } from '../../game/recentPlayedTeams';
 import { parseActiveGames, phaseLabel, relativeTime, resultLetter, toBrowserMatch, type FumbblActiveGame, type FumbblActiveTeam } from '../../game/fumbblPlayBlade';
 import { gameStore } from '../../game/store';
+import { openSpectate3d } from '../../game/spectate3dSession';
 import { sharedReplayFileImporter } from '../../game/replay/replayFileImport';
 import PostGamePanel from '../../components/PostGamePanel.vue';
 import { loadPostGameSnapshot, postGameSnapshotKeys } from '../../game/postGameCache';
@@ -174,6 +175,9 @@ function replayMatch(row: FumbblRecentMatch): void {
   const target = activeServerTarget();
   detailsRow.value = null;
   void gameStore.connectReplay({ url: target.url, compression: target.compression, coach: coach.value, gameId: row.replayId });
+}
+function replayMatch3d(row: FumbblRecentMatch): void {
+  openSpectate3d(row.replayId, coach.value, settings.language, settings.blockDiceSurface, settings.blockDiceFamily);
 }
 // Owner 09-25: DETAILS — the end-of-game pane as the coach saw it, from the 7-day cache (game/postGameCache.ts),
 // in a large centred popup with the Dice pane reachable; Replay stays inside as the fallback / companion.
@@ -569,6 +573,7 @@ function crestFailed(url: string | null): void {
               <span class="lm-res" :data-result="myRecent(row)" :aria-label="$t('lmBlades.play.result', { r: myRecent(row) })">{{ myRecent(row) }}</span>
               <button class="sf-btn small" type="button" :data-tour="row === recent[0] ? 'play-details' : undefined" :title="hasDetails(row) ? $t('play.listCard.endOfGameDetails', { matchId: row.matchId }) : $t('play.listCard.noStoredDetailsFor', { matchId: row.matchId })" @click="openDetails(row)">{{ $t('play.listCard.details') }}</button>
               <button class="sf-btn small" type="button" :data-tour="row === recent[0] ? 'play-replay' : undefined" :disabled="gameStore.replay.loading" :title="$t('play.listCard.replayMatchMatchid', { matchId: row.matchId })" @click="replayMatch(row)">{{ $t('play.listCard.replay') }}</button>
+              <button v-if="settings.experimentalFeatures" class="sf-btn small" type="button" data-testid="replay-3d" :title="$t('play.listCard.replayMatchMatchid', { matchId: row.matchId })" @click="replayMatch3d(row)">{{ $t('play.listCard.replay3d') }}</button>
               <span class="lm-when">{{ relativeTime(row.when) }}</span>
             </template>
           </LmResultCard>
@@ -618,6 +623,7 @@ function crestFailed(url: string | null): void {
         </div>
         <footer class="details-foot">
           <button v-if="!detailsExample" class="sf-btn primary" type="button" :disabled="gameStore.replay.loading" @click="replayMatch(detailsRow)">{{ $t('play.detailsModal.replay') }}</button>
+          <button v-if="!detailsExample && settings.experimentalFeatures" class="sf-btn" type="button" @click="replayMatch3d(detailsRow)">{{ $t('play.listCard.replay3d') }}</button>
         </footer>
       </div>
     </div>
@@ -831,6 +837,7 @@ function crestFailed(url: string | null): void {
               <div class="row-actions">
                 <button class="bevel resume-button details-button" type="button" :data-tour="row === recent[0] ? 'play-details' : undefined" :data-cached="hasDetails(row)" :title="hasDetails(row) ? $t('play.listCard.endOfGameDetails', { matchId: row.matchId }) : $t('play.listCard.noStoredDetailsFor', { matchId: row.matchId })" @click="openDetails(row)"><DisplayCaps :text="$t('play.listCard.details')" /></button>
                 <button class="bevel resume-button row-replay-button" type="button" :data-tour="row === recent[0] ? 'play-replay' : undefined" :disabled="gameStore.replay.loading" :title="$t('play.listCard.replayMatchMatchid', { matchId: row.matchId })" @click="replayMatch(row)"><DisplayCaps :text="$t('play.listCard.replay')" /></button>
+                <button v-if="settings.experimentalFeatures" class="bevel resume-button row-replay-button" type="button" data-testid="replay-3d" :title="$t('play.listCard.replayMatchMatchid', { matchId: row.matchId })" @click="replayMatch3d(row)"><DisplayCaps :text="$t('play.listCard.replay3d')" /></button>
                 <!-- Owner 10-01 (S78): when it was played sits under the buttons, not in the result box. -->
                 <span class="row-when">{{ relativeTime(row.when) }}</span>
               </div>
@@ -861,6 +868,7 @@ function crestFailed(url: string | null): void {
         <footer class="details-foot">
           <!-- Owner 10-01 (S73): no Dice button here - the pane's own Dice tab opens it. -->
           <button v-if="!detailsExample" class="bevel replay-button" type="button" :disabled="gameStore.replay.loading" @click="replayMatch(detailsRow)"><DisplayCaps :text="$t('play.detailsModal.replay')" /></button>
+          <button v-if="!detailsExample && settings.experimentalFeatures" class="bevel replay-button" type="button" @click="replayMatch3d(detailsRow)"><DisplayCaps :text="$t('play.listCard.replay3d')" /></button>
         </footer>
       </div>
     </div>

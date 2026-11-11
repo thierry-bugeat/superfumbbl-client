@@ -11,4 +11,4 @@ pitch.destroy();
 ```
 
 Le code porté depuis l'interface SpikeBowl (GPL-2.0-or-later), réécrit ici en TypeScript, est publié sous MIT
-avec l'accord de son auteur. Les décors (stade, ciel, herbe, sol) viennent de SpikeBowl et suivent la même décision.
+avec l'accord de son auteur. Les décors (ciel, herbe, sol, maison) viennent de SpikeBowl et suivent la même décision.

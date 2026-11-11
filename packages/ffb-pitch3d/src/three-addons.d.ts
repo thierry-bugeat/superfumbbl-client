@@ -13,6 +13,14 @@ declare module 'three/addons/controls/OrbitControls.js' {
     mouseButtons: { LEFT: MOUSE | null; MIDDLE: MOUSE | null; RIGHT: MOUSE | null };
     update(): boolean;
     dispose(): void;
+    getAzimuthalAngle(): number;
+  }
+}
+
+declare module 'three/addons/geometries/RoundedBoxGeometry.js' {
+  import { BoxGeometry } from 'three';
+  export class RoundedBoxGeometry extends BoxGeometry {
+    constructor(width?: number, height?: number, depth?: number, segments?: number, radius?: number);
   }
 }
 

@@ -14,6 +14,7 @@ import { deriveForkGameRows, routeForkSpectate, type ForkGameRow } from '../../g
 import { competitionLabel, groupByCompetition, missingCompetitionIds, type CompetitionNames } from '../../game/spectateCompetition';
 import { teamLogoUrl } from '../../game/teamLogos';
 import { vFitText } from '../../game/fitText'; // owner 11-05: group headings auto-fit their box
+import { openSpectate3d } from '../../game/spectate3dSession';
 import { $t, useLiveSet } from '../../i18n';
 /** i18n live-switch registrations owned by this component (released on unmount; src/i18n LIVE-SWITCH POLICY). */
 const liveSetHere = useLiveSet();
@@ -154,6 +155,9 @@ function onFilterEnter(): void {
  *  global settings.activeServerTarget — App.vue's openSpectateGame connects with settings.url as-is,
  *  and this view's own section selector no longer keeps that setting in sync (see spectateSection
  *  above), so the action that actually needs the target must set it. This list is FUMBBL-only. */
+function spectate3d(gameId: number): void {
+  openSpectate3d(gameId, settings.coach.trim(), settings.language, settings.blockDiceSurface, settings.blockDiceFamily, true);
+}
 function spectate(gameId: number): void {
   applyServerTarget('fumbbl');
   emit('spectate', gameId);
@@ -353,7 +357,10 @@ onBeforeUnmount(() => {
             <LmResultCard v-for="match in forkGames" :key="match.gameId"
               :home="{ name: match.homeTeam, coach: match.homeCoach }" :away="{ name: match.awayTeam, coach: match.awayCoach }"
               :clock="phase(match)" score-mode="vs">
-              <template #actions><button class="sf-btn primary" type="button" @click="spectateFork(match.gameId)">{{ $t('lmBlades.spectate.spectate') }}</button></template>
+              <template #actions>
+                <button class="sf-btn primary" type="button" @click="spectateFork(match.gameId)">{{ $t('lmBlades.spectate.spectate') }}</button>
+                <button v-if="settings.experimentalFeatures" class="sf-btn small" type="button" data-testid="spectate-3d" @click="spectate3d(match.gameId)">{{ $t('spectateBrowser.gameList.spectate3d') }}</button>
+              </template>
             </LmResultCard>
           </template>
         </template>
@@ -369,7 +376,10 @@ onBeforeUnmount(() => {
               <LmResultCard v-for="(match, matchIndex) in group.matches" :key="match.id"
                 :home="lmSide(match, 0)" :away="lmSide(match, 1)" :clock="phase(match)" :score-mode="lmHideScores ? 'hidden' : 'score'"
                 :data-tour="groupIndex === 0 && matchIndex === 0 ? 'spectate-phase' : undefined" :coach-tour="groupIndex === 0 && matchIndex === 0 ? 'spectate-coach' : undefined">
-                <template #actions><button class="sf-btn primary" type="button" :data-tour="groupIndex === 0 && matchIndex === 0 ? 'spectate-button' : undefined" @click="spectate(match.id)">{{ $t('lmBlades.spectate.spectate') }}</button></template>
+                <template #actions>
+                  <button class="sf-btn primary" type="button" :data-tour="groupIndex === 0 && matchIndex === 0 ? 'spectate-button' : undefined" @click="spectate(match.id)">{{ $t('lmBlades.spectate.spectate') }}</button>
+                  <button v-if="settings.experimentalFeatures" class="sf-btn small" type="button" data-testid="spectate-3d" @click="spectate3d(match.id)">{{ $t('spectateBrowser.gameList.spectate3d') }}</button>
+                </template>
               </LmResultCard>
             </template>
           </template>
@@ -470,6 +480,7 @@ onBeforeUnmount(() => {
                 </span>
               </div>
               <button class="bevel spectate-button" type="button" @click="spectateFork(match.gameId)"><DisplayCaps :text="$t('spectateBrowser.gameList.spectate')" /></button>
+              <button v-if="settings.experimentalFeatures" class="bevel spectate-button" type="button" data-testid="spectate-3d" @click="spectate3d(match.gameId)"><DisplayCaps :text="$t('spectateBrowser.gameList.spectate3d')" /></button>
             </div>
           </article>
         </div>
@@ -511,6 +522,7 @@ onBeforeUnmount(() => {
                 </span>
               </div>
               <button class="bevel spectate-button" type="button" :data-tour="groupIndex === 0 && matchIndex === 0 ? 'spectate-button' : undefined" @click="spectate(match.id)"><DisplayCaps :text="$t('spectateBrowser.gameList.spectate')" /></button>
+              <button v-if="settings.experimentalFeatures" class="bevel spectate-button" type="button" data-testid="spectate-3d" @click="spectate3d(match.id)"><DisplayCaps :text="$t('spectateBrowser.gameList.spectate3d')" /></button>
             </div>
           </article>
           </template>

@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-/** Owner 11-03 settings reflow: 13 tabs in a scrollable rail, in this order (the agreed mock). */
+/** Settings rail, in this order. */
 export const SETTINGS_SECTIONS = [
   { id: 'general', get label() { return t('settings.settingsSections.general'); } },
   { id: 'controls', get label() { return t('settings.settingsSections.controls'); } },
@@ -13,6 +13,7 @@ export const SETTINGS_SECTIONS = [
   { id: 'account', get label() { return t('settings.settingsSections.account'); } },
   { id: 'modpacks', get label() { return t('settings.settingsSections.modPacks'); } },
   { id: 'diagnostics', get label() { return t('settings.settingsSections.diagnostics'); } },
+  { id: 'experimental', get label() { return t('settings.settingsSections.experimental'); } },
   { id: 'credits', get label() { return t('settings.settingsSections.credits'); } },
 ] as const;
 
@@ -32,6 +33,7 @@ export const SETTINGS_TAB_BLURBS: Record<SettingsTab, string> = {
   get account() { return t('settings.tabBlurbs.account'); },
   get modpacks() { return t('settings.tabBlurbs.modpacks'); },
   get diagnostics() { return t('settings.tabBlurbs.diagnostics'); },
+  get experimental() { return t('settings.tabBlurbs.experimental'); },
   get credits() { return t('settings.tabBlurbs.credits'); },
 };
 
@@ -62,6 +64,7 @@ export function resolveSettingsTab(value: unknown): SettingsTab {
     case 'modpacks': return 'modpacks';
     case 'advanced': // the old General > Advanced group held the diagnostics
     case 'diagnostics': return 'diagnostics';
+    case 'experimental': return 'experimental';
     case 'about':
     case 'credits': return 'credits';
     default: return 'general';

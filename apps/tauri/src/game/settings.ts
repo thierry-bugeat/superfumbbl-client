@@ -518,6 +518,8 @@ export interface AppSettings extends ConfirmationSettings, SettingsReflowFeature
   /** Owner 2026-07-10: DEVELOPER mode — unlocked by the `-dev` exe arg / `?dev`. Gates the
    *  Settings → Developer section + the live Developer log panel. */
   devMode: boolean;
+  /** Settings → Experimental. Off until the user opts in. Gates unfinished features such as the 3D spectator. */
+  experimentalFeatures: boolean;
   coachBrain: 'none' | 'random' | 'fly-chaos';
   flyBrainUrl: string;
   /** Developer log panel visible. */
@@ -957,6 +959,7 @@ const DEFAULTS: AppSettings = {
   ...CONTROL_LAYER_DEFAULTS, // FUMBBL Controls (owner 11-03): Super FUMBBL Controls is the default layer
   fumbblKeyBindings: defaultFumbblKeyBindings(),
   devMode: false,
+  experimentalFeatures: false,
   coachBrain: 'none',
   flyBrainUrl: 'http://127.0.0.1:8766',
   devPanelOpen: false,
@@ -1397,6 +1400,7 @@ function hydrate(rawText: string | null, stampToLocalStorage = true): AppSetting
     merged.coachBadgeStyle = raw.coachBadgeStyle === 'retro' ? 'retro' : 'realistic'; // owner 10-20: realistic unless retro was chosen
     // Local presentation override only. Malformed/older blobs retain upstream variants.
     merged.hideZeroRerolls = raw.hideZeroRerolls === true; // owner 10-13: off unless the user turned it on
+    merged.experimentalFeatures = raw.experimentalFeatures === true;
     merged.dugoutCounts = raw.dugoutCounts === true; // owner 10-06: off unless the user turned it on
     merged.setupRulesCard = raw.setupRulesCard !== false; // owner 10-13: on unless the user turned it off
     merged.setupFormationsPanel = raw.setupFormationsPanel !== false; // owner 10-13: on unless the user turned it off

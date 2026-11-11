@@ -54,6 +54,8 @@ import { matchDisplayLabel, measuredRefreshHz, refreshDisplayRate, setDisplayRat
 import DisplayCaps from './components/DisplayCaps.vue';
 import GameMenuStats from './components/GameMenuStats.vue';
 import BetaLaunchSplash from './components/BetaLaunchSplash.vue';
+import Spectate3dFrame from './components/Spectate3dFrame.vue';
+import { closeSpectate3d, spectate3dUrl } from './game/spectate3dSession';
 import SettingsCategoryNav from './components/SettingsCategoryNav.vue';
 import SettingsSearch from './components/settings/SettingsSearch.vue';
 import { isSettingsSearchShortcut, revealSettingRow, type SettingsSearchGates } from './game/settingsSearch';
@@ -2083,6 +2085,11 @@ watch(() => ui.settingsOpen, (open) => { if (!open) { resetUiConfirmOpen.value =
 // the Play blade's "PLAY ON FUMBBL" card opens a .jnlp whose routing sets the target, and the Spectate
 // blade's own selector (SpectateBrowserView.vue) applies 'fumbbl' when a Spectate action needs it.
 // No flow was found whose ONLY server-switch path was the header plate.
+
+function leaveSpectate3d(): void {
+  closeSpectate3d();
+  selectBlade('play');
+}
 
 function selectBlade(nextView: AppView) {
   if (nextView === 'team') {
@@ -5254,6 +5261,22 @@ onBeforeUnmount(() => {
           </fieldset>
         </section>
 
+        <!-- ============================ EXPERIMENTAL ========================= -->
+        <section v-if="settingsTab === 'experimental'">
+          <fieldset class="settings-group" data-testid="experimental-settings">
+            <legend>{{ $t('settings.experimental.legend') }}</legend>
+            <div class="row">
+              <label class="row-main">
+                <span>{{ $t('settings.experimental.features') }}</span>
+                <span class="row-ctl">
+                  <input v-model="settings.experimentalFeatures" type="checkbox" data-testid="experimental-features" />
+                </span>
+              </label>
+              <SettingInfo :text="$t('settings.info.experimentalFeatures')" :def="$t('settings.info.valueOff')" />
+            </div>
+          </fieldset>
+        </section>
+
         <!-- ============================ CREDITS ============================= -->
         <section v-if="settingsTab === 'credits'">
           <!-- Owner 09-30 (S51): which web app runs on which shell; an app patch can be dropped for the built-in one. -->
@@ -5656,6 +5679,7 @@ onBeforeUnmount(() => {
     <ClientTour :host="clientTourHost" :should-start="clientTourShouldStart" :suspended="clientTourSuspended" :in-game="!!gameStore.game.value" :demo-game="!!gameStore.state.demoMode"
       :game-menu-open="ui.gameMenuOpen" :settings-open="ui.settingsOpen" :twitch-url="twitchChannelUrl"
       :colorblind-filter="colorblindFilterStyle?.filter" />
+    <Spectate3dFrame v-if="spectate3dUrl" :src="spectate3dUrl" @leave="leaveSpectate3d" />
   </main>
   <BetaLaunchSplash v-else-if="betaSplashOpen" @dismiss="betaSplashOpen = false" />
   <div v-else-if="introOpen" class="intro-splash" role="dialog" :aria-label="$t('introSplash.superFumbblIntro')" @click="finishIntro">

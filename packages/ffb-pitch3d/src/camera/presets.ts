@@ -18,7 +18,7 @@ export function applyCameraPreset(
   }
   const baseAzimuth = new Spherical().setFromVector3(cameraStart.clone().sub(target)).theta;
   const azimuth = preset === 'tribune' ? baseAzimuth + MathUtils.degToRad(-55) : baseAzimuth;
-  const distance = getDescentDistance(0.45, controls.minDistance, controls.maxDistance);
+  const distance = getDescentDistance(0.3, controls.minDistance, controls.maxDistance);
   const phi = getDescentPolarAngle(distance, controls.minDistance, controls.maxDistance);
   camera.position.copy(target).add(new Vector3().setFromSphericalCoords(distance, phi, azimuth));
   controls.update();
