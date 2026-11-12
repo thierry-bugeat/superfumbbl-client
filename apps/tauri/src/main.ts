@@ -99,4 +99,8 @@ async function boot() {
   createApp(App).mount('#app');
 }
 
-void boot();
+void boot().catch((error: unknown) => {
+  console.error(error);
+  const label = document.querySelector('#boot-label');
+  if (label) label.textContent = error instanceof Error ? error.message : String(error);
+});
