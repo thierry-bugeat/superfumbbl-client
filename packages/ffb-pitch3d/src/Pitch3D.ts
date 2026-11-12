@@ -185,6 +185,11 @@ export class Pitch3D {
     this.tackleZones?.setVisible(enabled);
   }
 
+  /** Icônes de skills au-dessus des figurines. Une map vide les retire. */
+  setSkillBadges(badges: ReadonlyMap<string, readonly string[]>): void {
+    this.figurines?.setSkillBadges(badges);
+  }
+
   /** Figurine sous le pointeur, ou null. */
   pickPlayer(clientX: number, clientY: number): string | null {
     const renderer = this.renderer;

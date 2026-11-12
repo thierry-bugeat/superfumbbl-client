@@ -32,6 +32,14 @@ let gitSha = 'nogit';
 try { gitSha = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim(); } catch { /* not a git checkout */ }
 
 // Tauri expects a fixed dev port (see src-tauri/tauri.conf.json devUrl).
+// The shell opens /spectate3d.html. `vite build` emits only index.html unless the
+// second page is an explicit input, so a static dist would 404 that URL.
+const buildInput = assetPackBuilder
+  ? undefined
+  : {
+      main: fileURLToPath(new URL('./index.html', import.meta.url)),
+      spectate3d: fileURLToPath(new URL('./spectate3d.html', import.meta.url)),
+    };
 export default defineConfig({
   plugins: [
     // Owner 09-29: public builds compile without the private developer tooling (fork build: not added, unchanged).
@@ -67,7 +75,10 @@ export default defineConfig({
   clearScreen: false,
   // Keep shipped placeholder art as auditable files. Inlining would hide the
   // bytes inside JavaScript and make the installer-content gate ambiguous.
-  build: { assetsInlineLimit: 0 },
+  build: {
+    assetsInlineLimit: 0,
+    ...(buildInput ? { rollupOptions: { input: buildInput } } : {}),
+  },
   // Web workers are bundled by their own plugin pipeline: the public strip must run there too.
   worker: { plugins: () => (edition === 'public' ? [publicStripPlugin({ edition })] : []) },
   define: {

@@ -1,5 +1,7 @@
+import { d6FaceUrl, isD6FaceValue } from '@fumbbl40k/ffb-pitch/src/d6';
 import { Pitch3D, type PitchDiagnostics } from '@fumbbl40k/ffb-pitch3d';
 import type { GameJson, TeamJson, TurnDataJson } from '@fumbbl40k/ffb-protocol';
+import { terms } from '../../i18n/terms';
 import { crestDataUrl } from '../../game/teamCrests';
 import {
   buildInducementChips,
@@ -15,6 +17,8 @@ import { t } from '../../i18n';
 import { SPECTATE3D_RETURN_MESSAGE } from '../../game/spectate3dSession';
 import { applyClientLanguage, applySpectate3dCopy } from './locale';
 import { fetchReplay, loadReplayText, ReplayTimeline, replayStillLive } from './replayTimeline';
+import { SKILL_BADGE_MODES, skillBadgeUrls, type SkillBadgeMode } from './skillBadges';
+import { weatherBannersForStep, type WeatherBanner, type WeatherBannerKey } from './weatherBanner';
 
 applyClientLanguage();
 applySpectate3dCopy();
@@ -135,11 +139,13 @@ const logsIcon = document.querySelector<HTMLImageElement>('#logs-icon');
 const resetIcon = document.querySelector<HTMLImageElement>('#reset-camera-icon');
 const playerCardIcon = document.querySelector<HTMLImageElement>('#player-card-icon');
 const tackleZonesIcon = document.querySelector<HTMLImageElement>('#tackle-zones-icon');
+const skillsIcon = document.querySelector<HTMLImageElement>('#skills-icon');
 const consoleIcon = document.querySelector<HTMLImageElement>('#console-icon');
 if (logsIcon) logsIcon.src = new URL('./logs.svg', import.meta.url).href;
 if (resetIcon) resetIcon.src = new URL('./reset-camera.svg', import.meta.url).href;
 if (playerCardIcon) playerCardIcon.src = new URL('./cards/player-card.svg', import.meta.url).href;
 if (tackleZonesIcon) tackleZonesIcon.src = new URL('./tackle-zones.svg', import.meta.url).href;
+if (skillsIcon) skillsIcon.src = new URL('./skills.svg', import.meta.url).href;
 if (consoleIcon) consoleIcon.src = new URL('./console.svg', import.meta.url).href;
 mountFullscreen();
 
@@ -150,6 +156,33 @@ document.querySelector<HTMLButtonElement>('#tackle-zones')?.addEventListener('cl
   pitch.setTackleZones(next);
   button.classList.toggle('hud-btn--active', next);
   button.setAttribute('aria-pressed', next ? 'true' : 'false');
+});
+
+let skillMode: SkillBadgeMode = 'none';
+
+function paintSkillButton(): void {
+  const button = document.querySelector<HTMLButtonElement>('#skills');
+  const label = button?.querySelector('span');
+  if (!button || !label) return;
+  const text = t(`spectate3d.skills.${skillMode}`);
+  button.dataset.mode = skillMode;
+  button.title = text;
+  button.setAttribute('aria-label', text);
+  button.setAttribute('aria-pressed', skillMode === 'none' ? 'false' : 'true');
+  button.classList.toggle('hud-btn--active', skillMode !== 'none');
+  label.textContent = text;
+}
+
+function applySkillBadges(game: GameJson | null): void {
+  pitch.setSkillBadges(game && skillMode !== 'none' ? skillBadgeUrls(game, skillMode) : new Map());
+}
+
+paintSkillButton();
+document.querySelector<HTMLButtonElement>('#skills')?.addEventListener('click', () => {
+  const index = SKILL_BADGE_MODES.indexOf(skillMode);
+  skillMode = SKILL_BADGE_MODES[(index + 1) % SKILL_BADGE_MODES.length] ?? 'none';
+  paintSkillButton();
+  applySkillBadges(shownGame);
 });
 
 const playerCards = mountPlayerCards();
@@ -262,9 +295,86 @@ function lobThrownMate(command: { animation?: unknown } | null): void {
 let timeline: ReplayTimeline | null = null;
 let index = 0;
 let seekGeneration = 0;
+let announcedWeather: WeatherBannerKey | null = null;
+let shownIndex = -1;
+let bannerRelease: (() => void) | null = null;
+
+function dismissWeatherBanner(): void {
+  const release = bannerRelease;
+  bannerRelease = null;
+  release?.();
+  const root = document.querySelector<HTMLElement>('#weather-banner');
+  if (root) root.hidden = true;
+}
+
+/** Le jet de météo, ou la météo déjà connue quand on saute par-dessus le jet. */
+async function presentWeatherBanners(banners: readonly WeatherBanner[], generation: number): Promise<void> {
+  for (const banner of banners) {
+    if (generation !== seekGeneration) return;
+    await holdWeatherBanner(banner, generation);
+  }
+}
+
+function holdWeatherBanner(banner: WeatherBanner, generation: number): Promise<void> {
+  const root = document.querySelector<HTMLElement>('#weather-banner');
+  const title = document.querySelector<HTMLElement>('#weather-banner-title');
+  const dice = document.querySelector<HTMLElement>('#weather-banner-dice');
+  const art = document.querySelector<HTMLImageElement>('#weather-banner-art');
+  const caption = document.querySelector<HTMLElement>('#weather-banner-caption');
+  if (!root || !title || !dice || !art || !caption || generation !== seekGeneration) return Promise.resolve();
+  const label = t(banner.titleKey);
+  const name = banner.term ? terms(banner.term) : '';
+  title.textContent = label;
+  title.hidden = false;
+  caption.textContent = name;
+  caption.hidden = !name || name === banner.term;
+  dice.replaceChildren();
+  for (const value of banner.roll) {
+    if (!isD6FaceValue(value)) continue;
+    const face = document.createElement('img');
+    face.src = d6FaceUrl(value);
+    face.alt = t('hud.weatherDieP0', { p0: value });
+    dice.appendChild(face);
+  }
+  dice.hidden = dice.childElementCount === 0;
+  art.alt = name || label;
+  root.setAttribute('aria-label', name ? `${label}. ${name}` : label);
+  art.src = banner.src;
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      root.removeEventListener('click', finish);
+      window.removeEventListener('keydown', onKey);
+      if (bannerRelease === finish) {
+        bannerRelease = null;
+        root.hidden = true;
+      }
+      resolve();
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape' || event.key === 'Enter') {
+        event.preventDefault();
+        finish();
+      }
+    };
+    const timer = window.setTimeout(finish, banner.dwellMs);
+    bannerRelease = finish;
+    root.hidden = false;
+    root.classList.remove('is-in');
+    void root.offsetWidth;
+    root.classList.add('is-in');
+    root.addEventListener('click', finish);
+    window.addEventListener('keydown', onKey);
+  });
+}
 
 async function show(): Promise<void> {
   const generation = ++seekGeneration;
+  dismissWeatherBanner();
   if (!timeline) {
     statusEl.textContent = t('spectate3d.status.empty');
     logEl.textContent = '';
@@ -273,7 +383,10 @@ async function show(): Promise<void> {
     renderMatchLog([]);
     pitch.clearBlockDice();
     shownGame = null;
+    applySkillBadges(null);
     showCoaches(null);
+    announcedWeather = null;
+    shownIndex = -1;
     paintLiveButton();
     return;
   }
@@ -283,10 +396,22 @@ async function show(): Promise<void> {
     statusEl.textContent = t('spectate3d.status.computing', { done, target });
   });
   if (generation !== seekGeneration) return;
-  const command = index === 0 ? null : current.commands[index - 1];
+  const command = index === 0 ? null : current.commands[index - 1] ?? null;
+  const jumped = shownIndex < 0 || index !== shownIndex + 1;
+  shownIndex = index;
+  const weatherStep = weatherBannersForStep({
+    index,
+    jumped,
+    command,
+    commands: current.commands,
+    weather: state.fieldModel?.weather,
+    announcedKey: announcedWeather,
+  });
+  announcedWeather = weatherStep.announcedKey;
   statusEl.textContent = command
     ? t('spectate3d.status.command', { index, total: current.commands.length, id: command.netCommandId })
     : t('spectate3d.status.start', { total: current.commands.length });
+  applySkillBadges(state);
   pitch.present(state);
   lobThrownMate(command);
   shownGame = state;
@@ -302,9 +427,20 @@ async function show(): Promise<void> {
   }
   renderMatchLog(matchLog.sync(current.commands, index, state));
   paintLiveButton();
+  if (generation !== seekGeneration) return;
+  await presentWeatherBanners(weatherStep.banners, generation);
 }
 
-async function openLoadedReplay(): Promise<void> {
+async function openLoadedReplay(atLive = false): Promise<void> {
+  if (atLive && liveOpen && timeline) {
+    const generation = ++followGeneration;
+    followingLive = true;
+    index = timeline.length - 1;
+    await show();
+    if (generation !== followGeneration) return;
+    startFollowingLive();
+    return;
+  }
   index = 0;
   await seekFirstLineup();
   await show();
@@ -810,7 +946,7 @@ if (Number.isInteger(launchGame) && launchGame > 0 && launchCoach) {
     const bundle = await fetchReplay(launchGame, launchCoach);
     timeline = ReplayTimeline.fromBundle(bundle);
     watchLiveGame(launchGame, launchCoach, spectateMode && replayStillLive(bundle));
-    await openLoadedReplay();
+    await openLoadedReplay(spectateMode);
   } catch (error) {
     timeline = null;
     statusEl.textContent = error instanceof Error ? error.message : String(error);

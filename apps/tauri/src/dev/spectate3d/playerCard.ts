@@ -1,4 +1,11 @@
-import type { GameJson, PlayerJson, TeamJson } from '@fumbbl40k/ffb-protocol';
+import {
+  decodePlayerSkills,
+  normalizeSkillName,
+  playerSkillDisplayEntries,
+  type GameJson,
+  type PlayerJson,
+  type TeamJson,
+} from '@fumbbl40k/ffb-protocol';
 import { portraitCrop, walkPortrait } from '@fumbbl40k/ffb-pitch3d';
 
 type Side = 'home' | 'away';
@@ -116,7 +123,8 @@ function createCard(parent: HTMLElement, side: Side) {
     setText(front, side, 'stat-ag', formatStat(player.agility, true));
     setText(front, side, 'stat-pa', formatStat(player.passing, true));
     setText(front, side, 'stat-ar', formatStat(player.armour, true));
-    setSkills(front, side, player.skillArray ?? []);
+    const skills = cardSkillLines(team, player);
+    setSkills(front, side, skills.native, skills.added);
     const portrait = await cropPortrait(String(team.race ?? ''), positionName, side === 'home');
     if (current !== request || !showingFront) return;
     if (portrait) {
@@ -198,15 +206,59 @@ function setText(svg: SVGSVGElement, side: Side, id: string, value: string): voi
   if (node) node.textContent = value;
 }
 
-function setSkills(svg: SVGSVGElement, side: Side, skills: readonly string[]): void {
+const ROLL_VALUED_SKILLS = new Set(['loner', 'bloodlust', 'hypnoticgaze', 'secretweapon']);
+const MODIFIER_VALUED_SKILLS = new Set(['mightyblow', 'dirtyplayer']);
+
+function formatSkillValue(skill: string, value: string): string {
+  const numeric = value.trim();
+  if (!/^\d+$/.test(numeric)) return numeric;
+  const key = normalizeSkillName(skill);
+  if (ROLL_VALUED_SKILLS.has(key)) return `${numeric}+`;
+  if (MODIFIER_VALUED_SKILLS.has(key)) return `+${numeric}`;
+  return numeric;
+}
+
+/** Natifs en blanc, ajoutés en or. Sans poste connu, tout reste natif. */
+function cardSkillLines(team: TeamJson, player: PlayerJson): { native: string[]; added: string[] } {
+  const positions = (team.roster as { positionArray?: { positionId?: string; skillArray?: string[] }[] }).positionArray;
+  const position = positions?.find((entry) => String(entry.positionId) === String(player.positionId));
+  const baseline = new Set(position?.skillArray ?? []);
+  const decoded = decodePlayerSkills(player);
+  const native: string[] = [];
+  const added: string[] = [];
+  for (const entry of playerSkillDisplayEntries(player)) {
+    const value = decoded.find((skill) => skill.name === entry.name && skill.value?.trim())?.value?.trim() ?? '';
+    const text = entry.label !== entry.name
+      ? entry.label
+      : value ? `${entry.name} (${formatSkillValue(entry.name, value)})` : entry.name;
+    const line = label(text);
+    if (position && !baseline.has(entry.name)) added.push(line);
+    else native.push(line);
+  }
+  return { native, added };
+}
+
+function setSkills(svg: SVGSVGElement, side: Side, native: readonly string[], added: readonly string[]): void {
   const host = svg.querySelector(`#${side}-liste-competences`);
   const box = host?.querySelector('.player-card-skills');
   if (!box) return;
   box.textContent = '';
-  const line = document.createElement('div');
-  line.className = 'player-card-skills-base';
-  line.textContent = skills.length ? skills.map((skill) => label(String(skill))).join(', ') : '—';
-  box.append(line);
+  if (native.length || added.length === 0) {
+    const base = document.createElement('div');
+    base.className = 'player-card-skills-base';
+    base.textContent = native.length ? native.join(', ') : '—';
+    box.append(base);
+  }
+  if (added.length === 0) return;
+  const extra = document.createElement('div');
+  extra.className = 'player-card-skills-additional';
+  if (native.length === 0) {
+    extra.style.marginTop = '0';
+    extra.style.paddingTop = '0';
+    extra.style.borderTop = 'none';
+  }
+  extra.textContent = added.join(', ');
+  box.append(extra);
 }
 
 const portraits = new Map<string, Promise<{ url: string; pixel: boolean } | null>>();

@@ -77,16 +77,77 @@
       .score-weather { justify-self: end; width: 34px; height: 34px; }
       .score-weather svg { display: none; width: 34px; height: 34px; }
       .score-weather svg.is-on { display: block; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.65)); }
+      .weather-banner {
+        position: absolute; inset: 0; z-index: 40;
+        cursor: pointer; font-family: Inter, system-ui, sans-serif;
+      }
+      .weather-banner[hidden] { display: none !important; }
+      .weather-banner-title {
+        margin: 0; color: #f4efe2; font-size: clamp(15px, 2vw, 22px); font-weight: 800;
+        letter-spacing: 0.18em; text-transform: uppercase;
+        text-shadow: 0 2px 6px #000;
+      }
+      .weather-banner-title[hidden],
+      .weather-banner-dice[hidden],
+      .weather-banner-caption[hidden] { display: none; }
+      .weather-banner-dice { display: flex; gap: 16px; }
+      .weather-banner-dice img {
+        width: 74px; height: 74px; object-fit: contain;
+        filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.65));
+      }
+      .weather-banner-plate {
+        position: absolute;
+        left: 50%; top: 50%;
+        transform: translate(-50%, -50%);
+        width: 90vw;
+        display: flex; align-items: center; justify-content: center;
+        padding-block: 33px;
+      }
+      .weather-banner-stack {
+        position: absolute; left: 50%; bottom: calc(100% + 16px);
+        transform: translateX(-50%);
+        display: flex; flex-direction: column; align-items: center; gap: 16px;
+      }
+      .weather-banner-plate-bg {
+        position: absolute; inset: 0;
+        width: 100%; height: 100%;
+        pointer-events: none;
+      }
+      .weather-banner-art {
+        position: relative; z-index: 1;
+        width: min(78vw, 820px); height: auto;
+        filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
+      }
+      .weather-banner.is-in .weather-banner-plate {
+        animation: weather-banner-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+      }
+      @keyframes weather-banner-in {
+        from { opacity: 0; transform: translate(-50%, calc(-50% + 16px)) scale(0.86); }
+        to { opacity: 1; transform: translate(-50%, -50%); }
+      }
+      .weather-banner-caption {
+        position: absolute; left: 50%; top: calc(100% + 8px);
+        transform: translateX(-50%);
+        margin: 0; color: #f4efe2; font-size: clamp(18px, 2.4vw, 28px); font-weight: 800;
+        text-shadow: 0 2px 8px #000; white-space: nowrap;
+      }
+      .weather-banner-skip {
+        position: absolute; bottom: 28px; margin: 0;
+        color: rgba(255, 255, 255, 0.82); font-size: 13px; letter-spacing: 0.08em;
+        text-shadow: 0 1px 3px #000;
+      }
       .hud-btn {
         position: absolute; bottom: 12px; z-index: 4;
-        display: inline-flex; align-items: center; gap: 8px;
-        height: 34px; padding: 0 10px 0 8px; cursor: pointer;
+        box-sizing: border-box;
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        width: 34px; height: 34px; min-width: 34px; padding: 0; cursor: pointer;
         border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 7px;
         color: #f2f7ff; background: rgba(17, 35, 55, 0.92);
         font: 13px/1 Inter, system-ui, sans-serif;
       }
       .hud-btn img { width: 22px; height: 22px; display: block; pointer-events: none; }
       .hud-btn span { display: none; white-space: nowrap; }
+      .hud-btn:hover, .hud-btn:focus-visible { width: auto; padding: 0 10px; }
       .hud-btn:hover span, .hud-btn:focus-visible span { display: inline; }
       .hud-bl {
         position: absolute; left: 12px; bottom: 12px; z-index: 4;
@@ -175,6 +236,7 @@
       }
       .player-card-figure--pixel img { image-rendering: pixelated; }
       .hud-btn--active { border-color: rgba(67, 161, 255, 0.9); background: rgba(67, 161, 255, 0.22); }
+      #skills[data-mode="added"] { border-color: rgba(224, 184, 74, 0.95); background: rgba(224, 184, 74, 0.22); }
       .logbar {
         position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
         width: min(75%, calc(100% - 220px)); z-index: 3; pointer-events: auto;
@@ -388,6 +450,10 @@
         </div>
       </div>
       <div class="hud-bl">
+        <button id="skills" class="hud-btn" type="button" data-mode="none" aria-pressed="false" title="No skills">
+          <img id="skills-icon" alt="" />
+          <span>No skills</span>
+        </button>
         <button id="player-card" class="hud-btn" type="button" aria-pressed="false" title="Player Card">
           <img id="player-card-icon" alt="" />
           <span>Player Card</span>
@@ -468,6 +534,36 @@
           <button id="leave-cancel" type="button" data-i18n="app.savePrompt.stayInGame">Stay in game</button>
         </div>
       </div>
+    </div>
+    <div id="weather-banner" class="weather-banner" hidden role="button" tabindex="0">
+      <div class="weather-banner-plate">
+        <div class="weather-banner-stack">
+          <p class="weather-banner-title" id="weather-banner-title"></p>
+          <div class="weather-banner-dice" id="weather-banner-dice"></div>
+        </div>
+        <svg class="weather-banner-plate-bg" viewBox="0 0 1200 240" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="weatherBarFade" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#0b0b0b" stop-opacity="0"/>
+              <stop offset="0.035" stop-color="#121212" stop-opacity="0.55"/>
+              <stop offset="0.07" stop-color="#0e0e0e" stop-opacity="0.92"/>
+              <stop offset="0.93" stop-color="#0e0e0e" stop-opacity="0.92"/>
+              <stop offset="0.965" stop-color="#121212" stop-opacity="0.55"/>
+              <stop offset="1" stop-color="#0b0b0b" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path fill="url(#weatherBarFade)" d="M0 28 L72 6 L164 18 L286 2 L428 16 L568 0 L724 14 L886 4 L1034 18 L1136 8 L1200 26 L1200 208 L1132 234 L974 220 L812 240 L636 224 L452 240 L294 222 L156 236 L58 218 L0 196 Z"/>
+          <g fill="#1a1a1a" opacity="0.55">
+            <path d="M120 48 L340 34 L336 46 L116 60 Z"/>
+            <path d="M860 40 L1100 54 L1096 66 L856 52 Z"/>
+            <path d="M150 188 L390 204 L386 216 L146 200 Z"/>
+            <path d="M820 192 L1060 176 L1064 188 L824 204 Z"/>
+          </g>
+        </svg>
+        <img class="weather-banner-art" id="weather-banner-art" alt="" />
+        <p class="weather-banner-caption" id="weather-banner-caption" hidden></p>
+      </div>
+      <p class="weather-banner-skip" data-i18n="hud.clickToSkip">Click to Skip</p>
     </div>
     <script type="module" src="/src/dev/spectate3d/main.ts"></script>
   </body>

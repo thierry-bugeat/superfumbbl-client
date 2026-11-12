@@ -15,6 +15,7 @@ import {
   Scene,
   SRGBColorSpace,
   Texture,
+  TextureLoader,
 } from 'three';
 import { edgeX, edgeZ, PITCH_COLUMNS, PITCH_ROWS, squareToWorld, TILE_SIZE } from '../coords';
 import { plateRect, type PlateRect } from './atlases';
@@ -42,6 +43,9 @@ interface Actor {
   lying: boolean;
   label: Texture;
   maps: Texture[];
+  skillGroup: Group;
+  badgeKey: string;
+  badgeToken: number;
   targetX: number;
   targetZ: number;
   targetScale: number;
@@ -98,6 +102,10 @@ export class Figurines {
   private readonly pawnGeometry = new CylinderGeometry(1, 1, PAWN_HEIGHT, 20);
   private readonly plateGeometry = new PlaneGeometry(1, 1);
   private readonly markerGeometry = new CylinderGeometry(0.46, 0.46, PAWN_HEIGHT / 2, 20);
+  private readonly iconGeometry = new PlaneGeometry(1, 1);
+  private readonly iconTextures = new Map<string, Texture>();
+  private readonly iconLoader = new TextureLoader();
+  private readonly badges = new Map<string, readonly string[]>();
   private lastTick = 0;
 
   constructor(scene: Scene) {
@@ -133,6 +141,8 @@ export class Figurines {
         existing.landingStunned = place.stunned;
         adoptPlace(existing, place);
       }
+      const actor = this.actors.get(place.id);
+      if (actor) this.applyBadges(actor);
     }
     for (const [id, actor] of this.actors) {
       if (seen.has(id)) continue;
@@ -247,6 +257,69 @@ export class Figurines {
         Math.cos(yaw) * (actor.pawnRadius + 0.02),
       );
       actor.labelMesh.rotation.y = yaw;
+      const skills = actor.skillGroup;
+      skills.rotation.y = yaw;
+      skills.position.y = actor.pawnTop + actor.plateHeight + 0.05;
+    }
+  }
+
+  /** Icônes au-dessus de la tête. `urls` vide retire la rangée. */
+  setSkillBadges(badges: ReadonlyMap<string, readonly string[]>): void {
+    this.badges.clear();
+    for (const [id, urls] of badges) this.badges.set(id, urls);
+    for (const actor of this.actors.values()) this.applyBadges(actor);
+  }
+
+  private applyBadges(actor: Actor): void {
+    const urls = (this.badges.get(actor.id) ?? []).slice(0, 8);
+    const key = urls.join('|');
+    if (actor.badgeKey === key) return;
+    actor.badgeKey = key;
+    const token = actor.badgeToken + 1;
+    actor.badgeToken = token;
+    clearSkillMeshes(actor.skillGroup);
+    if (urls.length === 0) return;
+    void this.mountBadges(actor, urls, token);
+  }
+
+  private async mountBadges(actor: Actor, urls: readonly string[], token: number): Promise<void> {
+    const textures = await Promise.all(urls.map((url) => this.iconTexture(url)));
+    if (actor.badgeToken !== token) return;
+    clearSkillMeshes(actor.skillGroup);
+    const icons = textures.filter((texture): texture is Texture => texture !== null);
+    if (icons.length === 0) return;
+    const size = 0.26;
+    const gap = 0.02;
+    const perRow = 4;
+    icons.forEach((texture, index) => {
+      const row = Math.floor(index / perRow);
+      const col = index % perRow;
+      const rowLength = Math.min(perRow, icons.length - row * perRow);
+      const rowWidth = rowLength * size + (rowLength - 1) * gap;
+      const mesh = new Mesh(this.iconGeometry, new MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false,
+        toneMapped: false,
+      }));
+      mesh.scale.set(size, size, 1);
+      mesh.position.set(-rowWidth / 2 + size / 2 + col * (size + gap), row * (size + gap) + size / 2, 0);
+      mesh.raycast = () => {};
+      mesh.renderOrder = 3;
+      actor.skillGroup.add(mesh);
+    });
+  }
+
+  private async iconTexture(url: string): Promise<Texture | null> {
+    const cached = this.iconTextures.get(url);
+    if (cached) return cached;
+    try {
+      const texture = await this.iconLoader.loadAsync(url);
+      texture.colorSpace = SRGBColorSpace;
+      this.iconTextures.set(url, texture);
+      return texture;
+    } catch {
+      return null;
     }
   }
 
@@ -256,6 +329,9 @@ export class Figurines {
     this.pawnGeometry.dispose();
     this.plateGeometry.dispose();
     this.markerGeometry.dispose();
+    this.iconGeometry.dispose();
+    for (const texture of this.iconTextures.values()) texture.dispose();
+    this.iconTextures.clear();
     this.group.removeFromParent();
   }
 
@@ -293,6 +369,9 @@ export class Figurines {
     labelMesh.position.y = pawn.position.y + PAWN_HEIGHT / 2 + labelSize / 2;
     labelMesh.raycast = () => {};
     root.add(labelMesh);
+    const skillGroup = new Group();
+    skillGroup.position.y = pawn.position.y + PAWN_HEIGHT / 2 + height + 0.05;
+    root.add(skillGroup);
     plate.add(lie);
     root.add(plate);
     const pawnTop = pawn.position.y + PAWN_HEIGHT / 2;
@@ -310,6 +389,9 @@ export class Figurines {
       lying: false,
       label,
       maps,
+      skillGroup,
+      badgeKey: '',
+      badgeToken: 0,
       targetX: place.x,
       targetZ: place.z,
       targetScale: place.scale,
@@ -474,6 +556,16 @@ function pose(actor: Actor, prone: boolean, stunned: boolean): void {
   }
   actor.plate.position.y = pawnTop + plateHeight / 2;
   actor.lie.rotation.z = 0;
+}
+
+function clearSkillMeshes(group: Group): void {
+  for (const child of [...group.children]) {
+    const mesh = child as Mesh;
+    const material = mesh.material;
+    if (Array.isArray(material)) material.forEach((entry) => entry.dispose());
+    else material?.dispose();
+    child.removeFromParent();
+  }
 }
 
 function numberLabel(number: number): CanvasTexture {
