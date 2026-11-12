@@ -3433,6 +3433,7 @@
   "spectate3d.jnlp.notReplay": "Ce fichier JNLP n’est pas un replay.",
   "spectate3d.logs.collapse": "Cliquer pour réduire les logs",
   "spectate3d.logs.expand": "Cliquer pour afficher l’historique des logs",
+  "spectate3d.loading": "Chargement du terrain…",
   "spectate3d.player.name": "Player",
   "spectate3d.playerState.absent": "absent",
   "spectate3d.playerState.banned": "exclu",

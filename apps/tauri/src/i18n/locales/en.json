@@ -3331,6 +3331,7 @@
   "spectate3d.jnlp.notReplay": "This JNLP file is not a replay.",
   "spectate3d.logs.collapse": "Click to collapse the log",
   "spectate3d.logs.expand": "Click to show the log history",
+  "spectate3d.loading": "Loading the pitch…",
   "spectate3d.player.name": "Player",
   "spectate3d.playerState.absent": "absent",
   "spectate3d.playerState.banned": "banned",

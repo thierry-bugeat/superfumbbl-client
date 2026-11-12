@@ -399,9 +399,50 @@
       .leave-actions { display: flex; justify-content: flex-end; gap: 8px; }
       .leave-actions button { padding: 8px 12px; }
       #leave-confirm { background: #8e1d1d; border-color: rgba(255, 120, 120, 0.45); }
+      /* Visible dès le HTML : le module 3D et le replay arrivent après. */
+      #boot {
+        position: fixed; inset: 0; z-index: 80;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+        background: #10140f; color: #f2f7ff;
+        font-family: Inter, system-ui, sans-serif;
+        transition: opacity 0.28s ease;
+      }
+      #boot[hidden] { display: none !important; }
+      #boot.is-out { opacity: 0; pointer-events: none; }
+      .boot-spinner {
+        width: 48px; height: 48px; border-radius: 50%;
+        border: 3px solid rgba(67, 161, 255, 0.22); border-top-color: #43a1ff;
+        animation: boot-spin 0.75s linear infinite;
+      }
+      #boot p {
+        margin: 0; max-width: min(420px, 84vw); padding: 0 16px;
+        text-align: center; font-size: 15px; letter-spacing: 0.02em;
+        color: rgba(242, 247, 255, 0.88);
+      }
+      @keyframes boot-spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { #boot { transition: none; } }
     </style>
   </head>
   <body>
+    <div id="boot" role="status">
+      <div class="boot-spinner" aria-hidden="true"></div>
+      <p id="boot-label" data-i18n="spectate3d.loading">Loading the pitch…</p>
+    </div>
+    <script>
+      (function () {
+        var lang = new URLSearchParams(location.search).get('lang') || '';
+        if (!lang) {
+          try {
+            var saved = JSON.parse(localStorage.getItem('fumbbl40k.settings') || 'null');
+            lang = saved && saved.language ? String(saved.language) : '';
+          } catch (e) { lang = ''; }
+        }
+        if (lang.toLowerCase().indexOf('fr') === 0) {
+          var label = document.getElementById('boot-label');
+          if (label) label.textContent = 'Chargement du terrain…';
+        }
+      })();
+    </script>
     <div id="stage">
       <div class="turn-edge turn-edge--home" hidden>
         <div class="turn-edge-label" data-i18n="hud.uiPanel.home">Home</div>

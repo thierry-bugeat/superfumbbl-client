@@ -32,12 +32,40 @@ const stageEl: HTMLElement = stage;
 const statusEl: HTMLElement = status;
 const diagEl: HTMLElement = diag;
 const logEl: HTMLElement = log;
+const boot = document.querySelector<HTMLElement>('#boot');
+const bootLabel = document.querySelector<HTMLElement>('#boot-label');
+
+function noteLoading(text: string): void {
+  if (!boot || !bootLabel || boot.hidden || boot.classList.contains('is-out')) return;
+  bootLabel.textContent = text;
+}
+
+function revealStage(): void {
+  if (!boot || boot.hidden || boot.classList.contains('is-out')) return;
+  const overlay = boot;
+  const finish = (): void => { overlay.hidden = true; };
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    finish();
+    return;
+  }
+  overlay.classList.add('is-out');
+  overlay.addEventListener('transitionend', (event) => {
+    if (event.target === overlay) finish();
+  }, { once: true });
+  window.setTimeout(finish, 450);
+}
 
 const pitch = new Pitch3D();
 mountConsole();
 const playerPanel = document.querySelector<HTMLElement>('#player');
 if (playerPanel) mountFloating(playerPanel, document.querySelector<HTMLButtonElement>('#player-collapse'), t('spectate3d.player.name'));
-await pitch.init(stageEl);
+try {
+  await pitch.init(stageEl);
+} catch (error) {
+  statusEl.textContent = error instanceof Error ? error.message : String(error);
+  revealStage();
+  throw error;
+}
 
 const FULLSCREEN_ENTER_ICON = new URL('./fullscreen-enter.svg', import.meta.url).href;
 const FULLSCREEN_EXIT_ICON = new URL('./fullscreen-exit.svg', import.meta.url).href;
@@ -404,12 +432,15 @@ async function show(): Promise<void> {
     announcedWeather = null;
     shownIndex = -1;
     paintLiveButton();
+    revealStage();
     return;
   }
   const current = timeline;
   const state = await current.seek(index, (done, target) => {
     if (generation !== seekGeneration) return;
-    statusEl.textContent = t('spectate3d.status.computing', { done, target });
+    const message = t('spectate3d.status.computing', { done, target });
+    statusEl.textContent = message;
+    noteLoading(message);
   });
   if (generation !== seekGeneration) return;
   const command = index === 0 ? null : current.commands[index - 1] ?? null;
@@ -444,6 +475,7 @@ async function show(): Promise<void> {
   renderMatchLog(matchLog.sync(current.commands, index, state));
   paintLiveButton();
   if (generation !== seekGeneration) return;
+  revealStage();
   await presentWeatherBanners(weatherStep.banners, generation);
 }
 
@@ -756,7 +788,9 @@ async function seekFirstLineup(): Promise<void> {
   for (let i = 0; i < current.length; i += 1) {
     const state = await current.seek(i);
     if (i % 40 === 0) {
-      statusEl.textContent = t('spectate3d.status.seeking', { index: i, total: current.commands.length });
+      const message = t('spectate3d.status.seeking', { index: i, total: current.commands.length });
+      statusEl.textContent = message;
+      noteLoading(message);
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
     if (playersOnPitch(state) > 0) {
@@ -957,7 +991,9 @@ const launchGame = Number(launch.get('gameId'));
 const launchCoach = launch.get('coach')?.trim() ?? '';
 spectateMode = launch.get('spectate') === '1';
 if (Number.isInteger(launchGame) && launchGame > 0 && launchCoach) {
-  statusEl.textContent = t('spectate3d.status.downloading');
+  const downloading = t('spectate3d.status.downloading');
+  statusEl.textContent = downloading;
+  noteLoading(downloading);
   try {
     const bundle = await fetchReplay(launchGame, launchCoach);
     timeline = ReplayTimeline.fromBundle(bundle);
@@ -966,5 +1002,8 @@ if (Number.isInteger(launchGame) && launchGame > 0 && launchCoach) {
   } catch (error) {
     timeline = null;
     statusEl.textContent = error instanceof Error ? error.message : String(error);
+    revealStage();
   }
+} else {
+  revealStage();
 }
