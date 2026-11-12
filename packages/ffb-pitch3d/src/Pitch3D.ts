@@ -3,16 +3,12 @@ import {
   ACESFilmicToneMapping,
   Color,
   DirectionalLight,
-  Group,
   HemisphereLight,
-  Material,
-  Mesh,
   PCFSoftShadowMap,
   PerspectiveCamera,
   Raycaster,
   Scene,
   SRGBColorSpace,
-  Texture,
   Vector2,
   Vector3,
   WebGLRenderer,
@@ -20,10 +16,9 @@ import {
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { applyCameraPreset, type CameraPreset } from './camera/presets';
 import { getDescentPolarAngle, HORIZONTAL_POLAR_RAD, TOP_DOWN_POLAR_RAD } from './camera/descent';
-import { PITCH_COLUMNS, PITCH_ROWS, squareToWorld, TILE_SIZE } from './coords';
+import { squareToWorld } from './coords';
 import { PitchFog } from './environment/fog';
 import { createPitchGround, type PitchGroundHandle } from './environment/pitchGround';
-import { createPitchMarkings } from './environment/pitch';
 import { SkyDome } from './environment/skyDome';
 import { PitchHouse } from './environment/house';
 import { Figurines } from './actors/figurines';
@@ -54,7 +49,6 @@ export class Pitch3D {
   private ground: PitchGroundHandle | null = null;
   private sky: SkyDome | null = null;
   private house: PitchHouse | null = null;
-  private markings: Group | null = null;
   private figurines: Figurines | null = null;
   private tackleZones: TackleZones | null = null;
   private tackleZonesOn = false;
@@ -118,12 +112,9 @@ export class Pitch3D {
     this.fog = new PitchFog(scene, camera);
     this.fog.init();
 
-    const pitchWidth = PITCH_COLUMNS * TILE_SIZE;
-    const pitchDepth = PITCH_ROWS * TILE_SIZE;
-    this.ground = await createPitchGround(pitchWidth + 40, pitchDepth + 50);
+    const anisotropy = renderer.capabilities.getMaxAnisotropy();
+    this.ground = await createPitchGround(anisotropy);
     scene.add(this.ground.mesh);
-    this.markings = createPitchMarkings();
-    scene.add(this.markings);
 
     this.sky = new SkyDome();
     await this.sky.load(120);
@@ -136,7 +127,6 @@ export class Pitch3D {
     this.tackleZones = new TackleZones(scene);
     this.ball = new PitchBall(scene);
     this.blockDice = new BlockDice(scene);
-    const anisotropy = renderer.capabilities.getMaxAnisotropy();
     await Promise.all([loadAtlases(anisotropy), this.ball.load(), this.blockDice.load(anisotropy)]);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -248,8 +238,6 @@ export class Pitch3D {
     this.sky = null;
     this.house?.dispose();
     this.house = null;
-    disposeGroup(this.markings);
-    this.markings = null;
     this.figurines?.dispose();
     this.figurines = null;
     this.tackleZones?.dispose();
@@ -430,26 +418,4 @@ function typing(target: EventTarget | null): boolean {
     return type !== 'button' && type !== 'checkbox' && type !== 'radio' && type !== 'range' && type !== 'submit';
   }
   return target.isContentEditable;
-}
-
-function disposeGroup(group: Group | null): void {
-  group?.traverse((node) => {
-    const mesh = node as Mesh;
-    mesh.geometry?.dispose();
-    const material = mesh.material as Material | Material[] | undefined;
-    if (Array.isArray(material)) material.forEach(disposeMaterial);
-    else if (material) disposeMaterial(material);
-  });
-  group?.clear();
-}
-
-function disposeMaterial(material: Material): void {
-  for (const value of Object.values(material)) {
-    if (isTexture(value)) value.dispose();
-  }
-  material.dispose();
-}
-
-function isTexture(value: unknown): value is Texture {
-  return !!value && typeof value === 'object' && (value as Texture).isTexture === true;
 }

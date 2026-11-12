@@ -53,8 +53,8 @@ export class SkyDome {
     );
     ground.rotation.x = -Math.PI / 2;
     ground.rotation.z = Math.PI / 4;
-    // Juste sous l'herbe (y 0.02) et les lignes (bas vers 0.024).
-    ground.position.y = 0;
+    // Sous le plateau du terrain (y 0). Au même niveau, les deux textures clignotent.
+    ground.position.y = -0.025; // Pour éviter le clignotement des textures.
     ground.receiveShadow = true;
     this.group.add(ground);
   }

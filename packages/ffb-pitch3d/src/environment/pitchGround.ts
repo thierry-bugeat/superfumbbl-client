@@ -1,5 +1,8 @@
 import {
+  ClampToEdgeWrapping,
+  DoubleSide,
   InstancedMesh,
+  LinearFilter,
   MathUtils,
   Mesh,
   MeshStandardMaterial,
@@ -11,8 +14,21 @@ import {
   TextureLoader,
   Vector2,
 } from 'three';
+import { edgeX, edgeZ, PITCH_COLUMNS, PITCH_ROWS } from '../coords';
 
 const GRASS_URL = new URL('../../assets/environment/grass.svg', import.meta.url).href;
+const GROUND_URL = new URL('../../assets/environment/ground-regular.avif', import.meta.url).href;
+
+/**
+ * Repères mesurés sur ground-regular.avif (5413 × 7197).
+ * Un carreau du 15 × 26 peint fait 268 px. L'en-but away est en haut de l'image,
+ * l'en-but home en bas, les lignes de touche à gauche et à droite.
+ */
+const SQUARE_PX = 268;
+const IMAGE_W = 5413;
+const IMAGE_H = 7197;
+const AWAY_LINE_PY = 105.5;
+const LEFT_LINE_PX = 700;
 
 export interface PitchGroundHandle {
   mesh: Mesh;
@@ -21,27 +37,42 @@ export interface PitchGroundHandle {
 }
 
 /**
- * Sol et brins d'herbe portés de SpikeBowl.
- * Le visuel de sol de SpikeBowl est un plateau sevens vertical : il n'est pas plaqué
- * sur le 26 × 15. Le vert et les lignes FFB le remplacent. L'herbe animée, elle, est reprise.
+ * Plateau de SpikeBowl, avec ground-regular.avif à la place du plateau sevens.
+ * L'image est en portrait (longueur dans la hauteur) : les UV la tournent pour
+ * que l'en-but home tombe sur la colonne 0, à gauche.
+ * L'herbe animée reste en dehors du 26 × 15.
  */
-export async function createPitchGround(groundWidth: number, groundDepth: number, bladeCount = 4000): Promise<PitchGroundHandle> {
-  const grassTexture = await new TextureLoader().loadAsync(GRASS_URL);
-  const geometry = new PlaneGeometry(groundWidth, groundDepth);
+export async function createPitchGround(maxAnisotropy = 16, bladeCount = 4000): Promise<PitchGroundHandle> {
+  const loader = new TextureLoader();
+  const [groundTexture, grassTexture] = await Promise.all([
+    loader.loadAsync(GROUND_URL),
+    loader.loadAsync(GRASS_URL),
+  ]);
+  configureGroundTexture(groundTexture, maxAnisotropy);
+
+  const length = IMAGE_H / SQUARE_PX;
+  const width = IMAGE_W / SQUARE_PX;
+  const geometry = new PlaneGeometry(length, width);
   geometry.rotateX(-Math.PI / 2);
+  turnTextureOntoLength(geometry);
   const material = new MeshStandardMaterial({
-    color: 0x2f6b3a,
-    roughness: 0.92,
+    color: 0xffffff,
+    map: groundTexture,
+    roughness: 0.98,
     metalness: 0.02,
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
+    side: DoubleSide,
+    transparent: false,
+    alphaTest: 0.02,
+    depthWrite: true,
   });
   const mesh = new Mesh(geometry, material);
+  const awayX = length / 2 - (AWAY_LINE_PY / IMAGE_H) * length;
+  const leftZ = -width / 2 + (LEFT_LINE_PX / IMAGE_W) * width;
+  mesh.position.set(edgeX(PITCH_COLUMNS) - awayX, 0, edgeZ(0) - leftZ);
   mesh.receiveShadow = true;
   mesh.renderOrder = -2;
 
-  const grass = installGrass(mesh, grassTexture, groundWidth, groundDepth, bladeCount);
+  const grass = installGrass(mesh, grassTexture, length, width, bladeCount);
   return {
     mesh,
     update: (timeMs) => grass.update(timeMs),
@@ -49,11 +80,38 @@ export async function createPitchGround(groundWidth: number, groundDepth: number
       grass.dispose();
       geometry.dispose();
       material.dispose();
+      groundTexture.dispose();
     },
   };
 }
 
-function installGrass(ground: Mesh, grassTex: Texture, groundWidth: number, groundDepth: number, bladeCount: number): { update(timeMs: number): void; dispose(): void } {
+/** Même réglage que SpikeBowl : pas de mipmaps, pour garder les lignes nettes en vue oblique. */
+function configureGroundTexture(texture: Texture, maxAnisotropy: number): void {
+  texture.colorSpace = SRGBColorSpace;
+  texture.wrapS = ClampToEdgeWrapping;
+  texture.wrapT = ClampToEdgeWrapping;
+  texture.generateMipmaps = false;
+  texture.minFilter = LinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.anisotropy = maxAnisotropy;
+  texture.needsUpdate = true;
+}
+
+/**
+ * Après rotateX(-90°), u suit x et v suit -z.
+ * On veut la hauteur de l'image (away en haut) le long de x, et sa largeur le long de z.
+ */
+function turnTextureOntoLength(geometry: PlaneGeometry): void {
+  const uv = geometry.getAttribute('uv');
+  for (let i = 0; i < uv.count; i += 1) {
+    const u = uv.getX(i);
+    const v = uv.getY(i);
+    uv.setXY(i, 1 - v, u);
+  }
+  uv.needsUpdate = true;
+}
+
+function installGrass(ground: Mesh, grassTex: Texture, length: number, width: number, bladeCount: number): { update(timeMs: number): void; dispose(): void } {
   grassTex.colorSpace = SRGBColorSpace;
   grassTex.needsUpdate = true;
   const bladeH = 0.19;
@@ -106,14 +164,18 @@ function installGrass(ground: Mesh, grassTex: Texture, groundWidth: number, grou
   });
   const grass = new InstancedMesh(bladeGeometry, grassMaterial, bladeCount);
   const dummy = new Object3D();
-  const marginX = 1.2;
-  const marginZ = 1.2;
+  const pitchX0 = edgeX(0) - ground.position.x;
+  const pitchX1 = edgeX(PITCH_COLUMNS) - ground.position.x;
+  const pitchZ0 = edgeZ(0) - ground.position.z;
+  const pitchZ1 = edgeZ(PITCH_ROWS) - ground.position.z;
   for (let i = 0; i < bladeCount; i += 1) {
-    dummy.position.set(
-      MathUtils.randFloatSpread(groundWidth - marginX * 2),
-      0.02,
-      MathUtils.randFloatSpread(groundDepth - marginZ * 2),
-    );
+    let x = 0;
+    let z = 0;
+    do {
+      x = MathUtils.randFloatSpread(length);
+      z = MathUtils.randFloatSpread(width);
+    } while (x > pitchX0 && x < pitchX1 && z > pitchZ0 && z < pitchZ1);
+    dummy.position.set(x, 0.02, z);
     dummy.rotation.y = Math.random() * Math.PI;
     const scale = 0.4 + Math.random() * 0.55;
     dummy.scale.setScalar(scale);

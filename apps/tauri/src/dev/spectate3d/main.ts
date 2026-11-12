@@ -308,6 +308,7 @@ async function openLoadedReplay(): Promise<void> {
   index = 0;
   await seekFirstLineup();
   await show();
+  if (!spectateMode) setPlaying(true);
 }
 
 document.querySelector<HTMLInputElement>('#file')?.addEventListener('change', async (event) => {
