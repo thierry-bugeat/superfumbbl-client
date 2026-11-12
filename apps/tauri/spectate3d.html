@@ -98,8 +98,11 @@
       .weather-banner-plate {
         position: absolute;
         left: 50%; top: 50%;
-        transform: translate(-50%, -50%);
         width: 90vw;
+        transform: translate(-50%, -50%);
+      }
+      .weather-banner-motion {
+        position: relative;
         display: flex; align-items: center; justify-content: center;
         padding-block: 33px;
       }
@@ -116,14 +119,17 @@
       .weather-banner-art {
         position: relative; z-index: 1;
         width: min(78vw, 820px); height: auto;
+        aspect-ratio: 600 / 210;
         filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
       }
-      .weather-banner.is-in .weather-banner-plate {
+      .weather-banner.is-in .weather-banner-motion {
         animation: weather-banner-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
       }
+      /* L'entrée anime le contenu, pas la plaque : son translate(-50%, -50%)
+         suit la hauteur réelle, y compris quand l'image arrive. */
       @keyframes weather-banner-in {
-        from { opacity: 0; transform: translate(-50%, calc(-50% + 16px)) scale(0.86); }
-        to { opacity: 1; transform: translate(-50%, -50%); }
+        from { opacity: 0; transform: translateY(16px) scale(0.86); }
+        to { opacity: 1; transform: none; }
       }
       .weather-banner-caption {
         position: absolute; left: 50%; top: calc(100% + 8px);
@@ -466,7 +472,7 @@
           <img id="logs-icon" alt="" />
           <span>Logs</span>
         </button>
-        <button id="console-toggle" class="hud-btn hud-btn--active" type="button" aria-pressed="true" title="console">
+        <button id="console-toggle" class="hud-btn" type="button" aria-pressed="false" title="console">
           <img id="console-icon" alt="" />
           <span>console</span>
         </button>
@@ -480,7 +486,7 @@
         <span data-i18n="spectate3d.resetCamera">Reset camera</span>
       </button>
     </div>
-    <aside id="console" aria-label="SuperFumbbl Console">
+    <aside id="console" aria-label="SuperFumbbl Console" hidden>
       <div class="float-titlebar">
         <h1>SuperFumbbl Console</h1>
         <button id="console-collapse" type="button" aria-label="Collapse the console" title="Collapse the console">−</button>
@@ -497,7 +503,9 @@
         <button id="player-collapse" type="button" aria-label="Collapse Player" title="Collapse Player">−</button>
       </div>
       <div class="float-content">
+        <!-- Champ de test : décommenter pour charger un replay ou un .jnlp à la main.
         <label class="file"><span data-i18n="spectate3d.file">Choose a replay or a .jnlp</span><input id="file" type="file" accept=".json,.jsonl,.txt,.jnlp" hidden /></label>
+        -->
         <div class="player-transport">
           <button id="first" type="button" data-i18n="spectate3d.transport.start" data-i18n-mode="title" title="Start" aria-label="Start">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5v14" /><path class="icon-fill" d="M18 6 8 12l10 6z" /></svg>
@@ -537,6 +545,7 @@
     </div>
     <div id="weather-banner" class="weather-banner" hidden role="button" tabindex="0">
       <div class="weather-banner-plate">
+        <div class="weather-banner-motion">
         <div class="weather-banner-stack">
           <p class="weather-banner-title" id="weather-banner-title"></p>
           <div class="weather-banner-dice" id="weather-banner-dice"></div>
@@ -562,6 +571,7 @@
         </svg>
         <img class="weather-banner-art" id="weather-banner-art" alt="" />
         <p class="weather-banner-caption" id="weather-banner-caption" hidden></p>
+        </div>
       </div>
       <p class="weather-banner-skip" data-i18n="hud.clickToSkip">Click to Skip</p>
     </div>

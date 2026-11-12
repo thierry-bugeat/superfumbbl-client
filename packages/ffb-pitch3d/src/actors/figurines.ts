@@ -26,8 +26,14 @@ const AWAY_COLOR = 0xd74646;
 const PAWN_HEIGHT = 0.08;
 const BASE_STATE_PRONE = 0x03;
 const BASE_STATE_STUNNED = 0x04;
+const BASE_STATE_KNOCKED_OUT = 0x05;
+const BASE_STATE_BADLY_HURT = 0x06;
+const BASE_STATE_SERIOUS_INJURY = 0x07;
+const BASE_STATE_RIP = 0x08;
 const BASE_STATE_IN_AIR = 0x15;
 const FLAG_ACTIVE = 0x100;
+/** Réserves au plus près de la touche, puis KO, puis blessés. */
+const DUGOUT_FILE_OFFSET = { reserve: 0, ko: 1, casualty: 2 } as const;
 
 interface Actor {
   id: string;
@@ -44,6 +50,7 @@ interface Actor {
   label: Texture;
   maps: Texture[];
   skillGroup: Group;
+  injury: Mesh | null;
   badgeKey: string;
   badgeToken: number;
   targetX: number;
@@ -103,12 +110,23 @@ export class Figurines {
   private readonly plateGeometry = new PlaneGeometry(1, 1);
   private readonly markerGeometry = new CylinderGeometry(0.46, 0.46, PAWN_HEIGHT / 2, 20);
   private readonly iconGeometry = new PlaneGeometry(1, 1);
+  private readonly injuryGeometry = new PlaneGeometry(0.42, 0.42);
+  private readonly injuryMaterial: MeshBasicMaterial;
+  private readonly injuryTexture: CanvasTexture;
   private readonly iconTextures = new Map<string, Texture>();
   private readonly iconLoader = new TextureLoader();
   private readonly badges = new Map<string, readonly string[]>();
   private lastTick = 0;
 
   constructor(scene: Scene) {
+    this.injuryTexture = injuryIconTexture();
+    this.injuryMaterial = new MeshBasicMaterial({
+      map: this.injuryTexture,
+      transparent: true,
+      side: DoubleSide,
+      depthWrite: false,
+      toneMapped: false,
+    });
     scene.add(this.group);
   }
 
@@ -142,7 +160,9 @@ export class Figurines {
         adoptPlace(existing, place);
       }
       const actor = this.actors.get(place.id);
-      if (actor) this.applyBadges(actor);
+      if (!actor) continue;
+      this.ensureInjury(actor, place.injury);
+      this.applyBadges(actor);
     }
     for (const [id, actor] of this.actors) {
       if (seen.has(id)) continue;
@@ -243,11 +263,11 @@ export class Figurines {
 
   face(camera: PerspectiveCamera): void {
     for (const actor of this.actors.values()) {
-      if (!actor.lockFacing) {
-        const dx = camera.position.x - actor.root.position.x;
-        const dz = camera.position.z - actor.root.position.z;
-        actor.plate.rotation.y = Math.atan2(dx, dz);
-      }
+      const dx = camera.position.x - actor.root.position.x;
+      const dz = camera.position.z - actor.root.position.z;
+      const look = Math.atan2(dx, dz);
+      if (!actor.lockFacing) actor.plate.rotation.y = look;
+      if (actor.injury) actor.injury.rotation.y = look;
       const yaw = actor.plate.rotation.y;
       // Bas du carré aligné sur le haut du socle, face caméra.
       const labelSize = actor.labelMesh.scale.y;
@@ -330,6 +350,9 @@ export class Figurines {
     this.plateGeometry.dispose();
     this.markerGeometry.dispose();
     this.iconGeometry.dispose();
+    this.injuryGeometry.dispose();
+    this.injuryMaterial.dispose();
+    this.injuryTexture.dispose();
     for (const texture of this.iconTextures.values()) texture.dispose();
     this.iconTextures.clear();
     this.group.removeFromParent();
@@ -390,6 +413,7 @@ export class Figurines {
       label,
       maps,
       skillGroup,
+      injury: null,
       badgeKey: '',
       badgeToken: 0,
       targetX: place.x,
@@ -402,8 +426,23 @@ export class Figurines {
       walk: null,
     };
     pose(actor, place.prone, place.stunned);
+    this.ensureInjury(actor, place.injury);
     if (!front) this.dressFromWalk(actor, frontMesh, backMesh, place);
     return actor;
+  }
+
+  /** Croix rouge au-dessus d'un blessé, comme sur le banc de SpikeBowl. */
+  private ensureInjury(actor: Actor, show: boolean): void {
+    if (show === (actor.injury !== null)) return;
+    actor.injury?.removeFromParent();
+    actor.injury = null;
+    if (!show) return;
+    const mesh = new Mesh(this.injuryGeometry, this.injuryMaterial);
+    mesh.userData.sharedMaterial = true;
+    mesh.position.y = 1.08;
+    mesh.raycast = () => {};
+    actor.root.add(mesh);
+    actor.injury = mesh;
   }
 
   /** Sans atlas illustré : sud et nord de la feuille de marche, sinon la plaque de couleur reste. */
@@ -457,6 +496,7 @@ interface Placement {
   scale: number;
   prone: boolean;
   stunned: boolean;
+  injury: boolean;
   inAir: boolean;
   active: boolean;
   signature: string;
@@ -473,15 +513,18 @@ function placeTeam(out: Placement[], team: TeamJson | undefined, game: GameJson,
   if (!team) return;
   const byId = new Map<string, PlayerJson>();
   for (const player of team.playerArray ?? []) byId.set(String(player.playerId), player);
-  let dugout = 0;
+  let dugout = { reserve: 0, ko: 0, casualty: 0 };
   for (const data of game.fieldModel?.playerDataArray ?? []) {
     const player = byId.get(String(data.playerId));
     if (!player) continue;
     const coordinate = data.playerCoordinate;
-    const onPitch = !!coordinate && coordinate[0] >= 0 && coordinate[0] <= 25 && coordinate[1] >= 0 && coordinate[1] <= 14;
-    const world = onPitch ? squareToWorld(coordinate[0], coordinate[1]) : dugoutSpot(home, dugout++);
     const state = Number(data.playerState) || 0;
     const base = state & 0xff;
+    const onPitch = !!coordinate && coordinate[0] >= 0 && coordinate[0] <= 25 && coordinate[1] >= 0 && coordinate[1] <= 14;
+    const file = benchFile(base);
+    const world = onPitch
+      ? squareToWorld(coordinate[0], coordinate[1])
+      : dugoutSpot(home, file, dugout[file]++);
     const positionName = positionNameOf(team, player);
     out.push({
       id: String(player.playerId),
@@ -495,30 +538,60 @@ function placeTeam(out: Placement[], team: TeamJson | undefined, game: GameJson,
       y: surfaceY,
       z: world.z,
       scale: 1,
-      prone: base === BASE_STATE_PRONE,
-      stunned: base === BASE_STATE_STUNNED,
-      inAir: base === BASE_STATE_IN_AIR,
-      active: (state & FLAG_ACTIVE) !== 0,
-      signature: `${positionName}|${player.playerNr}|${home ? 1 : 0}|${(state & FLAG_ACTIVE) !== 0 ? 1 : 0}`,
+      prone: onPitch && base === BASE_STATE_PRONE,
+      stunned: onPitch ? base === BASE_STATE_STUNNED : file !== 'reserve',
+      injury: !onPitch && file === 'casualty',
+      inAir: onPitch && base === BASE_STATE_IN_AIR,
+      active: onPitch && (state & FLAG_ACTIVE) !== 0,
+      signature: `${positionName}|${player.playerNr}|${home ? 1 : 0}|${onPitch && (state & FLAG_ACTIVE) !== 0 ? 1 : 0}`,
     });
   }
 }
 
-/** Un pas hors de la ligne de touche, puis une file de plus si l'équipe dépasse la longueur. */
+/** Un pas hors de la ligne de touche. Réserves, KO et blessés ont chacun leur file. */
 const DUGOUT_GAP = 1;
+
+type DugoutFile = keyof typeof DUGOUT_FILE_OFFSET;
 
 /**
  * Même taille que sur le terrain, en file le long de la longueur.
  * Vue d'ensemble : home part du bas à gauche, away du haut à droite.
+ * Les KO sont une file plus loin que les réserves, les blessés encore une de plus.
  */
-function dugoutSpot(home: boolean, index: number): { x: number; z: number } {
+function dugoutSpot(home: boolean, file: DugoutFile, index: number): { x: number; z: number } {
   const along = index % PITCH_COLUMNS;
-  const file = Math.floor(index / PITCH_COLUMNS);
+  const rank = Math.floor(index / PITCH_COLUMNS);
   const x = home
     ? edgeX(along) + TILE_SIZE / 2
     : edgeX(PITCH_COLUMNS - along) - TILE_SIZE / 2;
-  const out = DUGOUT_GAP + file * TILE_SIZE;
+  const out = DUGOUT_GAP + DUGOUT_FILE_OFFSET[file] + rank * 3;
   return { x, z: home ? edgeZ(0) - out : edgeZ(PITCH_ROWS) + out };
+}
+
+function benchFile(base: number): DugoutFile {
+  if (base === BASE_STATE_KNOCKED_OUT) return 'ko';
+  if (base === BASE_STATE_BADLY_HURT || base === BASE_STATE_SERIOUS_INJURY || base === BASE_STATE_RIP) return 'casualty';
+  return 'reserve';
+}
+
+function injuryIconTexture(): CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 96;
+  canvas.height = 96;
+  const context = canvas.getContext('2d');
+  if (context) {
+    context.clearRect(0, 0, 96, 96);
+    context.fillStyle = 'rgba(255, 255, 255, 0.92)';
+    context.beginPath();
+    context.arc(48, 48, 40, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = '#d82020';
+    context.fillRect(39, 22, 18, 52);
+    context.fillRect(22, 39, 52, 18);
+  }
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  return texture;
 }
 
 function positionNameOf(team: TeamJson, player: PlayerJson): string {
@@ -649,6 +722,7 @@ function disposeActor(actor: Actor): void {
   for (const map of actor.maps) map.dispose();
   actor.root.traverse((node) => {
     const mesh = node as Mesh;
+    if (mesh.userData.sharedMaterial) return;
     const material = mesh.material;
     if (Array.isArray(material)) material.forEach((entry) => entry.dispose());
     else material?.dispose();

@@ -343,10 +343,13 @@ function holdWeatherBanner(banner: WeatherBanner, generation: number): Promise<v
 
   return new Promise((resolve) => {
     let settled = false;
+    let timer = 0;
     const finish = (): void => {
       if (settled) return;
       settled = true;
       window.clearTimeout(timer);
+      art.removeEventListener('load', reveal);
+      art.removeEventListener('error', reveal);
       root.removeEventListener('click', finish);
       window.removeEventListener('keydown', onKey);
       if (bannerRelease === finish) {
@@ -361,14 +364,27 @@ function holdWeatherBanner(banner: WeatherBanner, generation: number): Promise<v
         finish();
       }
     };
-    const timer = window.setTimeout(finish, banner.dwellMs);
+    const reveal = (): void => {
+      art.removeEventListener('load', reveal);
+      art.removeEventListener('error', reveal);
+      if (settled || generation !== seekGeneration) {
+        finish();
+        return;
+      }
+      timer = window.setTimeout(finish, banner.dwellMs);
+      root.hidden = false;
+      root.classList.remove('is-in');
+      void root.offsetWidth;
+      root.classList.add('is-in');
+      root.addEventListener('click', finish);
+      window.addEventListener('keydown', onKey);
+    };
     bannerRelease = finish;
-    root.hidden = false;
-    root.classList.remove('is-in');
-    void root.offsetWidth;
-    root.classList.add('is-in');
-    root.addEventListener('click', finish);
-    window.addEventListener('keydown', onKey);
+    if (art.complete && art.naturalWidth > 0) reveal();
+    else {
+      art.addEventListener('load', reveal);
+      art.addEventListener('error', reveal);
+    }
   });
 }
 

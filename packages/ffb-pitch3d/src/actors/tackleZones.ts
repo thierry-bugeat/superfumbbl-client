@@ -91,12 +91,12 @@ export class TackleZones {
     const mesh = new Mesh(this.labelGeometry, new MeshBasicMaterial({
       transparent: true,
       depthWrite: false,
-      depthTest: false,
       side: DoubleSide,
       toneMapped: false,
     }));
     mesh.frustumCulled = false;
-    mesh.renderOrder = 2;
+    // Au-dessus des teintes, qui n'écrivent pas la profondeur, mais masqué par les objets qui l'écrivent.
+    mesh.renderOrder = 1;
     // Quart de tour horaire : le haut du chiffre pointe vers le haut de l'écran, dans le coin bas-droit.
     mesh.rotation.y = -Math.PI / 2;
     mesh.position.set(x - 0.28, LABEL_Y, z - 0.28);
