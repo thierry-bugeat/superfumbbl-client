@@ -21,6 +21,9 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 // __GIT_SHA__ so every build self-identifies its exact source. Veers builds the release with no
 // FUMBBL_DEV_LETTER → bare version. See memory dev-version-nomenclature.md.
 const devLetter = (process.env.FUMBBL_DEV_LETTER ?? '').trim();
+// Demo behind HAProxy: the browser stays on the public name and port. Vite still listens on 1420.
+const demoHost = (process.env.SUPERFUMBBL_DEMO_HOST ?? '').trim();
+const demoPort = Number(process.env.SUPERFUMBBL_DEMO_PORT || '80');
 const appVersion = pkg.version + devLetter; // e.g. "0.2.8d" (dev) or "0.2.8" (published)
 const assetPackBuilder = process.env.F40KMOD_BUILDER_UI === '1';
 // Owner 09-10 (public repo): the EDITION — 'fork' (private tree, default) or 'public' (the export rewrites
@@ -93,6 +96,12 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    ...(demoHost
+      ? {
+          allowedHosts: [demoHost],
+          hmr: { protocol: 'ws' as const, host: demoHost, clientPort: demoPort },
+        }
+      : {}),
     // The app intentionally consumes the workspace ffb-pitch package's source
     // assets. Vitest runs with apps/tauri as its root, so admit that monorepo
     // boundary only in tests; the desktop dev server keeps its existing scope.
