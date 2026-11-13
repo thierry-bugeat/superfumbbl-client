@@ -4,11 +4,7 @@
  * Les fichiers restent dans ffb-pitch ; ce module ne l'importe pas.
  */
 
-declare global {
-  interface ImportMeta {
-    glob<T>(pattern: string, options: { eager: true; query: '?url'; import: 'default' }): Record<string, T>;
-  }
-}
+type UrlGlob = <T>(pattern: string, options: { eager: true; query: '?url'; import: 'default' }) => Record<string, T>;
 
 const COLUMNS = 9;
 const ROWS = 8;
@@ -17,7 +13,7 @@ const BACK_ROW = 4;
 /** Hauteur monde d'une case entière. Le personnage rogné est une fraction de ça. */
 const FRAME_WORLD = 1.5;
 
-const walkUrls = import.meta.glob<string>('../../../ffb-pitch/assets/walk/*/*.png', {
+const walkUrls = (import.meta as unknown as { glob: UrlGlob }).glob<string>('../../../ffb-pitch/assets/walk/*/*.png', {
   eager: true,
   query: '?url',
   import: 'default',

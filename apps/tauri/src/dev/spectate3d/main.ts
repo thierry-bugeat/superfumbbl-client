@@ -300,7 +300,7 @@ function renderMatchLog(lines?: readonly string[]): void {
  * L'animation annonce la case d'arrivée avant que le modèle n'y pose le joueur.
  * La parabole part à cette annonce et continue si l'état change en plein vol.
  */
-function thrownMate(command: { animation?: unknown } | null): { id: string; x: number; y: number; withBall: boolean } | null {
+function thrownMate(command: { animation?: unknown; [key: string]: unknown } | null): { id: string; x: number; y: number; withBall: boolean } | null {
   const animation = command?.animation as {
     animationType?: unknown;
     thrownPlayerId?: unknown;
@@ -312,11 +312,11 @@ function thrownMate(command: { animation?: unknown } | null): { id: string; x: n
   if (type !== 'throwTeamMate' && type !== 'kickTeamMate') return null;
   if (animation.thrownPlayerId == null || !Array.isArray(animation.endCoordinate)) return null;
   const [x, y] = animation.endCoordinate as number[];
-  if (!Number.isInteger(x) || !Number.isInteger(y)) return null;
+  if (typeof x !== 'number' || typeof y !== 'number' || !Number.isInteger(x) || !Number.isInteger(y)) return null;
   return { id: String(animation.thrownPlayerId), x, y, withBall: animation.withBall === true };
 }
 
-function lobThrownMate(command: { animation?: unknown } | null): void {
+function lobThrownMate(command: { animation?: unknown; [key: string]: unknown } | null): void {
   const thrown = thrownMate(command);
   if (!thrown) return;
   pitch.throwMate(thrown.id, thrown.x, thrown.y, thrown.withBall);
@@ -1099,7 +1099,7 @@ function showScore(game: GameJson): void {
   awayNum.textContent = String(Number(game.gameResult?.teamResultAway?.score) || 0);
   half.textContent = halfLabel(Number(game.half) || 0);
   const kind = weatherKind(game.fieldModel?.weather);
-  for (const icon of weather.querySelectorAll<SVGElement>('svg')) {
+  for (const icon of Array.from(weather.querySelectorAll<SVGElement>('svg'))) {
     icon.classList.toggle('is-on', icon.dataset.kind === kind);
   }
 }

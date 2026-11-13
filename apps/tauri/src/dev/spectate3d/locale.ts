@@ -24,7 +24,7 @@ export function applyClientLanguage(): Locale {
 /** Static copy marked in the page. `title` sets title and aria-label; `text` replaces the text; `aria` sets aria-label. */
 export function applySpectate3dCopy(): void {
   document.title = t('spectate3d.title');
-  for (const el of document.querySelectorAll<HTMLElement>('[data-i18n]')) {
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>('[data-i18n]'))) {
     const key = el.dataset.i18n;
     if (!key) continue;
     const text = t(key);

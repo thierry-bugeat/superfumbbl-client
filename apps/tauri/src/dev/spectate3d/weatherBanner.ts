@@ -35,6 +35,7 @@ const BANNER_DWELL_MS = 2400;
 
 interface ReportCommand {
   reportList?: unknown;
+  [key: string]: unknown;
 }
 
 export function weatherBannersForStep(input: {
