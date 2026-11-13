@@ -18,6 +18,7 @@ import { SPECTATE3D_RETURN_MESSAGE } from '../../game/spectate3dSession';
 import { applyClientLanguage, applySpectate3dCopy } from './locale';
 import { fetchReplay, loadReplayText, ReplayTimeline, replayStillLive } from './replayTimeline';
 import { SKILL_BADGE_MODES, skillBadgeUrls, type SkillBadgeMode } from './skillBadges';
+import { MATCHUP_DWELL_MS, matchupView, tvThousands, type MatchupSideView } from './matchup';
 import { weatherBannersForStep, type WeatherBanner, type WeatherBannerKey } from './weatherBanner';
 
 applyClientLanguage();
@@ -326,6 +327,9 @@ let seekGeneration = 0;
 let announcedWeather: WeatherBannerKey | null = null;
 let shownIndex = -1;
 let bannerRelease: (() => void) | null = null;
+let matchupRelease: (() => void) | null = null;
+/** Vrai pour le premier affichage d'un replay ou d'un direct : la carte domicile / extérieur précède le jeu. */
+let openingMatchup = false;
 
 function dismissWeatherBanner(): void {
   const release = bannerRelease;
@@ -333,6 +337,83 @@ function dismissWeatherBanner(): void {
   release?.();
   const root = document.querySelector<HTMLElement>('#weather-banner');
   if (root) root.hidden = true;
+}
+
+function dismissMatchup(): void {
+  const release = matchupRelease;
+  matchupRelease = null;
+  release?.();
+}
+
+function paintMatchupSide(side: 'home' | 'away', view: MatchupSideView): void {
+  const teamEl = document.querySelector<HTMLElement>(`#matchup-${side}-team`);
+  const coachEl = document.querySelector<HTMLElement>(`#matchup-${side}-coach`);
+  const metaEl = document.querySelector<HTMLElement>(`#matchup-${side}-meta`);
+  const crestEl = document.querySelector<HTMLImageElement>(`#matchup-${side}-crest`);
+  if (teamEl) teamEl.textContent = view.teamName || t(side === 'home' ? 'hud.uiPanel.home' : 'hud.uiPanel.away');
+  if (coachEl) {
+    coachEl.textContent = view.coach;
+    coachEl.hidden = !view.coach;
+  }
+  if (metaEl) {
+    const race = view.race ? terms(view.race) : '';
+    const thousands = tvThousands(view.tvGold);
+    const tv = thousands == null ? '' : t('play.text.tvP0K', { p0: thousands.toLocaleString('en-US') });
+    metaEl.textContent = [race, tv].filter(Boolean).join(' · ');
+    metaEl.hidden = metaEl.textContent.length === 0;
+  }
+  if (!crestEl) return;
+  const url = crestDataUrl(view.race, side);
+  crestEl.hidden = !url;
+  crestEl.alt = '';
+  if (!url) return;
+  crestEl.onerror = () => { crestEl.hidden = true; };
+  crestEl.src = url;
+}
+
+/** Carte plein écran domicile contre extérieur. Rien si la partie a déjà commencé. */
+function presentMatchup(game: GameJson, generation: number): Promise<void> {
+  const view = matchupView(game);
+  const root = document.querySelector<HTMLElement>('#matchup');
+  if (!view || !root || generation !== seekGeneration) return Promise.resolve();
+  paintMatchupSide('home', view.home);
+  paintMatchupSide('away', view.away);
+  root.setAttribute('aria-label', t('spectate3d.matchup.aria', {
+    home: view.home.teamName || t('hud.uiPanel.home'),
+    away: view.away.teamName || t('hud.uiPanel.away'),
+  }));
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer = 0;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      root.removeEventListener('click', finish);
+      window.removeEventListener('keydown', onKey);
+      if (matchupRelease === finish) matchupRelease = null;
+      root.classList.remove('is-in');
+      root.hidden = true;
+      resolve();
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' && event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      finish();
+    };
+    matchupRelease = finish;
+    if (generation !== seekGeneration) {
+      finish();
+      return;
+    }
+    root.hidden = false;
+    root.classList.remove('is-in');
+    void root.offsetWidth;
+    root.classList.add('is-in');
+    root.addEventListener('click', finish);
+    window.addEventListener('keydown', onKey);
+    timer = window.setTimeout(finish, MATCHUP_DWELL_MS);
+  });
 }
 
 /** Le jet de météo, ou la météo déjà connue quand on saute par-dessus le jet. */
@@ -419,6 +500,9 @@ function holdWeatherBanner(banner: WeatherBanner, generation: number): Promise<v
 async function show(): Promise<void> {
   const generation = ++seekGeneration;
   dismissWeatherBanner();
+  dismissMatchup();
+  const opening = openingMatchup;
+  openingMatchup = false;
   if (!timeline) {
     statusEl.textContent = t('spectate3d.status.empty');
     logEl.textContent = '';
@@ -476,6 +560,10 @@ async function show(): Promise<void> {
   paintLiveButton();
   if (generation !== seekGeneration) return;
   revealStage();
+  if (opening) {
+    await presentMatchup(state, generation);
+    if (generation !== seekGeneration) return;
+  }
   await presentWeatherBanners(weatherStep.banners, generation);
 }
 
@@ -484,6 +572,7 @@ async function openLoadedReplay(atLive = false): Promise<void> {
     const generation = ++followGeneration;
     followingLive = true;
     index = timeline.length - 1;
+    openingMatchup = true;
     await show();
     if (generation !== followGeneration) return;
     startFollowingLive();
@@ -491,6 +580,7 @@ async function openLoadedReplay(atLive = false): Promise<void> {
   }
   index = 0;
   await seekFirstLineup();
+  openingMatchup = true;
   await show();
   if (!spectateMode) setPlaying(true);
 }

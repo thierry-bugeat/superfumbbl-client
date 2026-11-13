@@ -421,6 +421,138 @@
       }
       @keyframes boot-spin { to { transform: rotate(360deg); } }
       @media (prefers-reduced-motion: reduce) { #boot { transition: none; } }
+      @font-face {
+        font-family: "Varsity Team";
+        src: url("/fonts/VarsityTeam-Bold.otf") format("opentype");
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+      }
+      /* Deux aplats opaques, bleu à gauche et rouge à droite.
+         Le bord passe par le milieu de l'écran (58 % en haut, 42 % en bas). Pas de trait. */
+      #matchup {
+        --meta-ink: #d8e4f8;
+        position: fixed; inset: 0; z-index: 70; cursor: pointer;
+        color: var(--meta-ink);
+        font-family: "Varsity Team", Impact, "Arial Black", sans-serif;
+        background: #0a245a;
+      }
+      #matchup[hidden] { display: none !important; }
+      body:has(#matchup:not([hidden])) :is(#player, #console, .hud-bl, .hud-btn, .logbar, .turn-edge, .coach, .score) {
+        visibility: hidden !important;
+      }
+      .matchup-wash {
+        position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+      }
+      .matchup-blue, .matchup-red { position: absolute; inset: 0; }
+      .matchup-blue {
+        background:
+          radial-gradient(ellipse 70% 55% at 18% 42%, #2a5cb4, transparent 65%),
+          linear-gradient(118deg, #0a245a 0%, #0c2a64 100%);
+        clip-path: polygon(0 0, 58% 0, 42% 100%, 0 100%);
+      }
+      .matchup-blue::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        opacity: 0.4;
+        background-image:
+          repeating-linear-gradient(-18deg, transparent 0 11px, rgba(180, 210, 255, 0.05) 11px 12px),
+          radial-gradient(circle at 20% 30%, rgba(4, 12, 36, 0.28), transparent 40%),
+          radial-gradient(circle at 45% 70%, rgba(8, 18, 48, 0.22), transparent 35%);
+        mix-blend-mode: multiply;
+      }
+      .matchup-red {
+        background:
+          radial-gradient(ellipse 70% 55% at 82% 48%, #a33a32, transparent 65%),
+          linear-gradient(118deg, #6e1210 0%, #46080c 100%);
+        clip-path: polygon(57% 0, 100% 0, 100% 100%, 41% 100%);
+      }
+      .matchup-side {
+        position: absolute; top: max(28px, calc(50% - 12rem)); z-index: 1;
+        display: flex; flex-direction: column; justify-content: flex-start; gap: 0.55rem;
+        width: min(34vw, 440px);
+      }
+      .matchup-side--home { left: clamp(28px, 6vw, 88px); align-items: flex-start; text-align: left; }
+      .matchup-side--away { right: clamp(28px, 6vw, 88px); align-items: flex-end; text-align: right; }
+      .matchup-kicker {
+        margin: 0; min-height: 1.35em; line-height: 1.35; letter-spacing: 0.18em; text-transform: uppercase;
+        font-size: clamp(0.85rem, 1.6vw, 1.1rem); color: rgba(200, 220, 255, 0.75);
+        text-shadow: 0 1px 0 rgba(8, 20, 48, 0.45);
+      }
+      .matchup-crest {
+        width: clamp(88px, 12vw, 148px); height: clamp(88px, 12vw, 148px);
+        object-fit: contain; box-sizing: border-box; padding: 10px; border-radius: 50%;
+        border: 3px solid #d7e8ff;
+        background: radial-gradient(circle at 40% 35%, #6eb0ff, #123a8a 72%);
+        filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.5));
+      }
+      .matchup-crest[hidden] { visibility: hidden; display: block !important; }
+      .matchup-side--away .matchup-crest {
+        border-color: #f3b4b4;
+        background: radial-gradient(circle at 40% 35%, #e36b6b, #8f2b2b 72%);
+      }
+      .matchup-team {
+        margin: 0; max-width: 100%;
+        font-size: clamp(2rem, 5vw, 3.4rem); letter-spacing: 0.08em; text-transform: uppercase;
+        line-height: 0.95; overflow-wrap: anywhere; color: #fff;
+        text-shadow: 0 3px 0 rgba(8, 18, 48, 0.75);
+      }
+      .matchup-coach, .matchup-meta {
+        margin: 0; max-width: 100%;
+        font-family: Georgia, "Times New Roman", serif;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.65);
+      }
+      .matchup-coach { font-size: clamp(1.05rem, 1.8vw, 1.4rem); font-style: italic; color: #fff; }
+      .matchup-meta {
+        font-size: clamp(0.85rem, 1.4vw, 1.05rem); letter-spacing: 0.06em; text-transform: uppercase;
+        color: rgba(230, 238, 255, 0.9);
+      }
+      .matchup-coach[hidden], .matchup-meta[hidden] { display: none !important; }
+      .matchup-vs {
+        position: absolute; left: 50%; top: 50%; z-index: 2; margin: 0;
+        transform: translate(-50%, -50%);
+        font-size: clamp(3rem, 7vw, 5.6rem); letter-spacing: 0.08em; line-height: 1; color: #fff;
+        text-shadow: 0 3px 0 rgba(8, 18, 48, 0.75);
+        pointer-events: none;
+      }
+      .matchup-skip {
+        position: absolute; left: 50%; bottom: 28px; z-index: 2; transform: translateX(-50%);
+        margin: 0; color: rgba(216, 228, 248, 0.86);
+        font-size: clamp(0.75rem, 1.4vw, 0.95rem); letter-spacing: 0.08em; text-transform: uppercase;
+        text-shadow: 0 1px 0 rgba(8, 20, 48, 0.45);
+        pointer-events: none;
+      }
+      #matchup.is-in .matchup-wash { animation: matchup-wash-in 0.85s cubic-bezier(0.18, 0.9, 0.22, 1) both; }
+      #matchup.is-in .matchup-side--home { animation: matchup-home-in 0.55s cubic-bezier(0.2, 0.9, 0.25, 1) 0.22s both; }
+      #matchup.is-in .matchup-side--away { animation: matchup-away-in 0.55s cubic-bezier(0.2, 0.9, 0.25, 1) 0.32s both; }
+      #matchup.is-in .matchup-vs { animation: matchup-vs-in 0.45s ease 0.4s both; }
+      @keyframes matchup-wash-in {
+        from { opacity: 0; transform: translateX(-8%) skewX(-4deg); }
+        to { opacity: 1; transform: none; }
+      }
+      @keyframes matchup-home-in {
+        from { opacity: 0; transform: translateX(-28px); }
+        to { opacity: 1; transform: none; }
+      }
+      @keyframes matchup-away-in {
+        from { opacity: 0; transform: translateX(28px); }
+        to { opacity: 1; transform: none; }
+      }
+      @keyframes matchup-vs-in {
+        from { opacity: 0; transform: translate(-50%, -50%) scale(0.86); }
+        to { opacity: 1; transform: translate(-50%, -50%); }
+      }
+      @media (max-width: 720px) {
+        .matchup-side { width: min(40vw, 240px); }
+        .matchup-vs { font-size: clamp(2.2rem, 10vw, 3.4rem); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #matchup.is-in .matchup-wash,
+        #matchup.is-in .matchup-side--home,
+        #matchup.is-in .matchup-side--away,
+        #matchup.is-in .matchup-vs { animation: none; }
+      }
     </style>
   </head>
   <body>
@@ -583,6 +715,28 @@
           <button id="leave-cancel" type="button" data-i18n="app.savePrompt.stayInGame">Stay in game</button>
         </div>
       </div>
+    </div>
+    <div id="matchup" hidden role="button" tabindex="0">
+      <div class="matchup-wash" aria-hidden="true">
+        <div class="matchup-blue"></div>
+        <div class="matchup-red"></div>
+      </div>
+      <div class="matchup-side matchup-side--home">
+        <p class="matchup-kicker" data-i18n="hud.uiPanel.home">Home</p>
+        <img class="matchup-crest" id="matchup-home-crest" alt="" hidden />
+        <h2 class="matchup-team" id="matchup-home-team"></h2>
+        <p class="matchup-coach" id="matchup-home-coach" hidden></p>
+        <p class="matchup-meta" id="matchup-home-meta" hidden></p>
+      </div>
+      <p class="matchup-vs" aria-hidden="true">VS</p>
+      <div class="matchup-side matchup-side--away">
+        <p class="matchup-kicker" data-i18n="hud.uiPanel.away">Away</p>
+        <img class="matchup-crest" id="matchup-away-crest" alt="" hidden />
+        <h2 class="matchup-team" id="matchup-away-team"></h2>
+        <p class="matchup-coach" id="matchup-away-coach" hidden></p>
+        <p class="matchup-meta" id="matchup-away-meta" hidden></p>
+      </div>
+      <p class="matchup-skip" data-i18n="hud.clickToSkip">Click to Skip</p>
     </div>
     <div id="weather-banner" class="weather-banner" hidden role="button" tabindex="0">
       <div class="weather-banner-plate">

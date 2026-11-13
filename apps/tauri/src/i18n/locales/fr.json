@@ -3434,6 +3434,7 @@
   "spectate3d.logs.collapse": "Cliquer pour réduire les logs",
   "spectate3d.logs.expand": "Cliquer pour afficher l’historique des logs",
   "spectate3d.loading": "Chargement du terrain…",
+  "spectate3d.matchup.aria": "{home} contre {away}",
   "spectate3d.player.name": "Player",
   "spectate3d.playerState.absent": "absent",
   "spectate3d.playerState.banned": "exclu",
