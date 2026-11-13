@@ -21,6 +21,7 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 // __GIT_SHA__ so every build self-identifies its exact source. Veers builds the release with no
 // FUMBBL_DEV_LETTER → bare version. See memory dev-version-nomenclature.md.
 const devLetter = (process.env.FUMBBL_DEV_LETTER ?? '').trim();
+// sf.bugeat.com
 // Demo behind HAProxy: the browser stays on the public name and port. Vite still listens on 1420.
 const demoHost = (process.env.SUPERFUMBBL_DEMO_HOST ?? '').trim();
 const demoPort = Number(process.env.SUPERFUMBBL_DEMO_PORT || '80');
@@ -115,6 +116,16 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/fumbbl-site/, ''),
       },
     },
+  },
+  // http://sf.bugeat.com
+  // Used to serve a developer built demo (otherwise is too slow) behind HAProxy.
+  // (!) Only in http to be able to use websockets.
+  // `vite preview` checks the public name on its own. Without this, HAProxy gets a 403.
+  preview: {
+    host: '127.0.0.1',
+    port: 1420,
+    strictPort: true,
+    ...(demoHost ? { allowedHosts: [demoHost] } : {}),
   },
   envPrefix: ['VITE_', 'TAURI_'],
 });
