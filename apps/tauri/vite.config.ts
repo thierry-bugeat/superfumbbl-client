@@ -80,6 +80,9 @@ export default defineConfig({
   // Keep shipped placeholder art as auditable files. Inlining would hide the
   // bytes inside JavaScript and make the installer-content gate ambiguous.
   build: {
+    // spectate3d.html starts with top-level await. The default target stops at
+    // Safari 14 / ES2020, which cannot emit it. ES2022 matches tsconfig.
+    target: 'es2022',
     assetsInlineLimit: 0,
     ...(buildInput ? { rollupOptions: { input: buildInput } } : {}),
   },
