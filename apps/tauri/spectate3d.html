@@ -14,8 +14,9 @@
         z-index: 2; pointer-events: none; color: #f2f7ff;
         font-family: Inter, system-ui, sans-serif;
       }
-      .turn-edge--home { left: 10px; }
-      .turn-edge--away { right: 10px; }
+      /* Même colonne que les boutons de coin : 34px de large, 12px du bord. */
+      .turn-edge--home { left: 12px; width: 34px; }
+      .turn-edge--away { right: 12px; width: 34px; }
       .turn-edge-label {
         writing-mode: vertical-rl; transform: rotate(180deg); text-align: center;
         font-size: 11px; font-weight: 700; letter-spacing: 0.12em;

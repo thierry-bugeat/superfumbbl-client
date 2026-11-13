@@ -25,6 +25,7 @@ import { Figurines } from './actors/figurines';
 import { TackleZones } from './actors/tackleZones';
 import { PitchBall } from './actors/ball';
 import { BlockDice, type BlockDiceSpec } from './actors/blockDice';
+import { NumberDice, type NumberDiceSpec } from './actors/numberDice';
 import { disposeAtlases, loadAtlases } from './actors/atlases';
 import { pitchWeatherKey, WEATHER, type WeatherKey } from './weather';
 
@@ -55,6 +56,7 @@ export class Pitch3D {
   private lineup: GameJson | null = null;
   private ball: PitchBall | null = null;
   private blockDice: BlockDice | null = null;
+  private numberDice: NumberDice | null = null;
   private surfaceY = 0;
   private resizeObserver: ResizeObserver | null = null;
   private frame = 0;
@@ -127,6 +129,7 @@ export class Pitch3D {
     this.tackleZones = new TackleZones(scene);
     this.ball = new PitchBall(scene);
     this.blockDice = new BlockDice(scene);
+    this.numberDice = new NumberDice(scene);
     await Promise.all([loadAtlases(anisotropy), this.ball.load(), this.blockDice.load(anisotropy)]);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -176,6 +179,20 @@ export class Pitch3D {
 
   clearBlockDice(): void {
     this.blockDice?.clear();
+  }
+
+  /** Passage d'armure, puis jet de blessure. Le même `key` ne relance pas. */
+  showNumberDice(spec: NumberDiceSpec): void {
+    this.numberDice?.show(spec);
+  }
+
+  clearNumberDice(): void {
+    this.numberDice?.clear();
+  }
+
+  /** `immediate` : un saut. Sinon le jet d'armure puis de blessure se termine avant de disparaître. */
+  releaseNumberDice(immediate: boolean): void {
+    this.numberDice?.release(immediate);
   }
 
   /** Affiche ou masque les cases marquées, teintées selon le nombre de zones de tacle. */
@@ -253,6 +270,8 @@ export class Pitch3D {
     this.ball = null;
     this.blockDice?.dispose();
     this.blockDice = null;
+    this.numberDice?.dispose();
+    this.numberDice = null;
     disposeAtlases();
     this.fog?.dispose();
     this.fog = null;
@@ -313,6 +332,7 @@ export class Pitch3D {
     this.figurines?.face(this.camera);
     this.ball?.tick(now, this.figurines);
     this.blockDice?.tick(now);
+    this.numberDice?.tick(now);
     this.frames += 1;
     const elapsed = now - this.fpsStamp;
     if (elapsed >= 500) {

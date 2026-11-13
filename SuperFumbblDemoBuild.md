@@ -64,8 +64,10 @@ La compilation dure plusieurs minutes. Elle a réussi quand la commande se termi
 Remplace la ligne `ExecStart` de `/etc/systemd/system/superfumbbl-demo.service` :
 
 ```ini
-ExecStart=/usr/bin/corepack pnpm --filter @fumbbl40k/app exec vite preview --host 127.0.0.1 --port 1420 --strictPort
+ExecStart=/usr/bin/corepack pnpm --filter @fumbbl40k/app exec vite preview
 ```
+
+L’hôte `127.0.0.1`, le port `1420` et `strictPort` sont déjà dans le bloc `preview` de `apps/tauri/vite.config.ts`. Les remettre sur la ligne `ExecStart` ne sert à rien. Une coupure en fin de ligne, `--strictPor` au lieu de `--strictPort`, fait quitter Vite tout de suite.
 
 Garde `User=www-data`, `WorkingDirectory=/var/w3/html/sf.bugeat.com` et `Environment=SUPERFUMBBL_DEMO_HOST=sf.bugeat.com`. `SUPERFUMBBL_DEMO_PORT` ne sert qu’au rechargement du serveur de développement. Tu peux l’enlever.
 
@@ -121,6 +123,7 @@ Remets `Environment=SUPERFUMBBL_DEMO_PORT=80` si tu l’as enlevée, puis `sudo 
 ## En cas de blocage
 
 - **403 « This host is not allowed ».** Le bloc `preview` est absent, `SUPERFUMBBL_DEMO_HOST` ne vaut pas `sf.bugeat.com`, ou le service n’a pas été redémarré après le `git pull` qui apporte ce bloc.
+- **`Unknown option --strictPor`.** La ligne `ExecStart` est coupée. Elle doit être exactement `ExecStart=/usr/bin/corepack pnpm --filter @fumbbl40k/app exec vite preview`, sans options derrière `preview`.
 - **Le service quitte tout de suite.** `dist` n’existe pas : la compilation n’a pas abouti. Ou le port 1420 est déjà pris (`ss -ltnp | grep 1420`).
 - **`build:vite` s’arrête sur une erreur TypeScript.** Rien n’est écrit dans `dist`. Corrige l’erreur sur le Mac, pousse, et relance la compilation. Ne redémarre pas le service tant que la commande n’est pas sortie sans erreur.
 - **La page 3D est introuvable.** L’adresse reste `http://sf.bugeat.com/spectate3d.html`. Elle est dans `dist` seulement si `build.rollupOptions.input` cite encore `spectate3d.html`.

@@ -10,6 +10,7 @@ import {
   type InducementChip,
 } from '../../game/logic/coachPanelChips';
 import { blockDiceColor, blockRollAt } from './blockRoll';
+import { numberRollAt } from './numberRoll';
 import { describeState } from './describeState';
 import { mountPlayerCards } from './playerCard';
 import { MatchLog } from './matchLog';
@@ -680,6 +681,7 @@ async function show(): Promise<void> {
   shownGame = state;
   playerCards.refresh(state);
   showBlockDice(current.commands, index, state);
+  showNumberDice(current.commands, index, state, jumped);
   logEl.textContent = describeState(state);
   showTurns(state);
   showScore(state);
@@ -998,6 +1000,15 @@ function blockDieSetting(): { surface: unknown; family: unknown } {
   } catch {
     return { surface: 'auto', family: 'default' };
   }
+}
+
+function showNumberDice(commands: Parameters<typeof blockRollAt>[0], at: number, game: GameJson, jumped: boolean): void {
+  const roll = numberRollAt(commands, at, game);
+  if (!roll) {
+    pitch.releaseNumberDice(jumped);
+    return;
+  }
+  pitch.showNumberDice(roll);
 }
 
 function showBlockDice(commands: Parameters<typeof blockRollAt>[0], at: number, game: GameJson): void {
