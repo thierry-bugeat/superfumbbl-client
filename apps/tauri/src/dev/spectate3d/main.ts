@@ -18,6 +18,7 @@ import { SPECTATE3D_RETURN_MESSAGE } from '../../game/spectate3dSession';
 import { applyClientLanguage, applySpectate3dCopy } from './locale';
 import { fetchReplay, loadReplayText, ReplayTimeline, replayStillLive } from './replayTimeline';
 import { SKILL_BADGE_MODES, skillBadgeUrls, type SkillBadgeMode } from './skillBadges';
+import { ceremoniesForStep, type CeremonyCard, type CeremonySide } from './ceremony';
 import { MATCHUP_DWELL_MS, matchupView, tvThousands, type MatchupSideView } from './matchup';
 import { weatherBannersForStep, type WeatherBanner, type WeatherBannerKey } from './weatherBanner';
 
@@ -330,6 +331,8 @@ let bannerRelease: (() => void) | null = null;
 let matchupRelease: (() => void) | null = null;
 /** Vrai pour le premier affichage d'un replay ou d'un direct : la carte domicile / extérieur précède le jeu. */
 let openingMatchup = false;
+let finalCeremonyShown = false;
+let halfCeremonyShown = false;
 
 function dismissWeatherBanner(): void {
   const release = bannerRelease;
@@ -346,6 +349,12 @@ function dismissMatchup(): void {
 }
 
 function paintMatchupSide(side: 'home' | 'away', view: MatchupSideView): void {
+  const column = document.querySelector<HTMLElement>(`#matchup .matchup-side--${side}`);
+  column?.classList.remove('is-scoring', 'is-winner');
+  const scoreEl = document.querySelector<HTMLElement>(`#matchup-${side}-score`);
+  const extraEl = document.querySelector<HTMLElement>(`#matchup-${side}-extra`);
+  if (scoreEl) scoreEl.textContent = '';
+  if (extraEl) extraEl.replaceChildren();
   const teamEl = document.querySelector<HTMLElement>(`#matchup-${side}-team`);
   const coachEl = document.querySelector<HTMLElement>(`#matchup-${side}-coach`);
   const metaEl = document.querySelector<HTMLElement>(`#matchup-${side}-meta`);
@@ -378,6 +387,9 @@ function presentMatchup(game: GameJson, generation: number): Promise<void> {
   if (!view || !root || generation !== seekGeneration) return Promise.resolve();
   paintMatchupSide('home', view.home);
   paintMatchupSide('away', view.away);
+  root.dataset.kind = 'matchup';
+  const title = document.querySelector<HTMLElement>('#matchup-title');
+  if (title) title.textContent = 'VS';
   root.setAttribute('aria-label', t('spectate3d.matchup.aria', {
     home: view.home.teamName || t('hud.uiPanel.home'),
     away: view.away.teamName || t('hud.uiPanel.away'),
@@ -413,6 +425,124 @@ function presentMatchup(game: GameJson, generation: number): Promise<void> {
     root.addEventListener('click', finish);
     window.addEventListener('keydown', onKey);
     timer = window.setTimeout(finish, MATCHUP_DWELL_MS);
+  });
+}
+
+function paintCeremonySide(side: 'home' | 'away', view: CeremonySide): void {
+  const column = document.querySelector<HTMLElement>(`#matchup .matchup-side--${side}`);
+  column?.classList.toggle('is-scoring', view.highlight === 'scoring');
+  column?.classList.toggle('is-winner', view.highlight === 'winner');
+  const teamEl = document.querySelector<HTMLElement>(`#matchup-${side}-team`);
+  const coachEl = document.querySelector<HTMLElement>(`#matchup-${side}-coach`);
+  const metaEl = document.querySelector<HTMLElement>(`#matchup-${side}-meta`);
+  const scoreEl = document.querySelector<HTMLElement>(`#matchup-${side}-score`);
+  const extraEl = document.querySelector<HTMLElement>(`#matchup-${side}-extra`);
+  const crestEl = document.querySelector<HTMLImageElement>(`#matchup-${side}-crest`);
+  if (teamEl) teamEl.textContent = view.teamName || t(side === 'home' ? 'hud.uiPanel.home' : 'hud.uiPanel.away');
+  if (coachEl) {
+    coachEl.textContent = view.coach;
+    coachEl.hidden = !view.coach;
+  }
+  if (scoreEl) scoreEl.textContent = view.score;
+  if (metaEl) {
+    metaEl.textContent = view.meta;
+    metaEl.hidden = !view.meta;
+  }
+  if (extraEl) {
+    extraEl.replaceChildren();
+    for (const line of view.lines) {
+      const row = document.createElement('p');
+      row.textContent = line;
+      extraEl.appendChild(row);
+    }
+  }
+  if (!crestEl) return;
+  const url = crestDataUrl(view.race, side);
+  crestEl.hidden = !url;
+  crestEl.alt = '';
+  if (!url) return;
+  crestEl.onerror = () => { crestEl.hidden = true; };
+  crestEl.src = url;
+}
+
+function paintCeremonyStats(card: CeremonyCard): void {
+  const verdict = document.querySelector<HTMLElement>('#matchup-verdict');
+  const table = document.querySelector<HTMLTableElement>('#matchup-stats');
+  const defectors = document.querySelector<HTMLElement>('#matchup-defectors');
+  if (verdict) {
+    verdict.textContent = card.verdict;
+    verdict.hidden = !card.verdict;
+  }
+  if (defectors) {
+    defectors.textContent = card.defectors;
+    defectors.hidden = !card.defectors;
+  }
+  if (!table) return;
+  table.replaceChildren();
+  for (const stat of card.stats) {
+    const row = document.createElement('tr');
+    if (stat.homeLead) row.classList.add('is-home');
+    if (stat.awayLead) row.classList.add('is-away');
+    const home = document.createElement('td');
+    const label = document.createElement('td');
+    const away = document.createElement('td');
+    home.textContent = stat.home;
+    label.textContent = stat.label;
+    away.textContent = stat.away;
+    row.append(home, label, away);
+    table.appendChild(row);
+  }
+}
+
+/** Touchdown, mi-temps ou fin de match. Même carte que domicile contre extérieur. */
+function presentCeremony(card: CeremonyCard, generation: number): Promise<void> {
+  const root = document.querySelector<HTMLElement>('#matchup');
+  const title = document.querySelector<HTMLElement>('#matchup-title');
+  if (!root || !title || generation !== seekGeneration) return Promise.resolve();
+  paintCeremonySide('home', card.home);
+  paintCeremonySide('away', card.away);
+  paintCeremonyStats(card);
+  root.dataset.kind = card.kind;
+  const heading = t(card.titleKey);
+  title.textContent = heading;
+  root.setAttribute('aria-label', t('spectate3d.ceremony.aria', {
+    title: heading,
+    home: card.home.teamName || t('hud.uiPanel.home'),
+    away: card.away.teamName || t('hud.uiPanel.away'),
+    homeScore: card.home.score,
+    awayScore: card.away.score,
+  }));
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer = 0;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      root.removeEventListener('click', finish);
+      window.removeEventListener('keydown', onKey);
+      if (matchupRelease === finish) matchupRelease = null;
+      root.classList.remove('is-in');
+      root.hidden = true;
+      resolve();
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' && event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      finish();
+    };
+    matchupRelease = finish;
+    if (generation !== seekGeneration) {
+      finish();
+      return;
+    }
+    root.hidden = false;
+    root.classList.remove('is-in');
+    void root.offsetWidth;
+    root.classList.add('is-in');
+    root.addEventListener('click', finish);
+    window.addEventListener('keydown', onKey);
+    timer = window.setTimeout(finish, card.dwellMs);
   });
 }
 
@@ -515,6 +645,8 @@ async function show(): Promise<void> {
     showCoaches(null);
     announcedWeather = null;
     shownIndex = -1;
+    finalCeremonyShown = false;
+    halfCeremonyShown = false;
     paintLiveButton();
     revealStage();
     return;
@@ -565,6 +697,22 @@ async function show(): Promise<void> {
     if (generation !== seekGeneration) return;
   }
   await presentWeatherBanners(weatherStep.banners, generation);
+  if (generation !== seekGeneration || !timeline) return;
+  const ceremony = ceremoniesForStep({
+    game: state,
+    command: command,
+    commands: current.commands,
+    index,
+    jumped,
+    finalAlreadyShown: finalCeremonyShown,
+    halfAlreadyShown: halfCeremonyShown,
+  });
+  finalCeremonyShown = ceremony.finalShown;
+  halfCeremonyShown = ceremony.halfShown;
+  for (const card of ceremony.cards) {
+    if (generation !== seekGeneration) return;
+    await presentCeremony(card, generation);
+  }
 }
 
 async function openLoadedReplay(atLive = false): Promise<void> {

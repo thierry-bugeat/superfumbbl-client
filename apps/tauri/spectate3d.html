@@ -513,8 +513,80 @@
         position: absolute; left: 50%; top: 50%; z-index: 2; margin: 0;
         transform: translate(-50%, -50%);
         font-size: clamp(3rem, 7vw, 5.6rem); letter-spacing: 0.08em; line-height: 1; color: #fff;
+        text-align: center;
         text-shadow: 0 3px 0 rgba(8, 18, 48, 0.75);
         pointer-events: none;
+      }
+      .matchup-score {
+        display: none; margin: 0;
+        font-size: clamp(3.2rem, 8vw, 6.2rem); line-height: 0.85; color: #fff;
+        text-shadow: 0 3px 0 rgba(8, 18, 48, 0.75);
+      }
+      .matchup-extra {
+        display: none; margin: 0; flex-direction: column; gap: 0.15rem;
+        max-width: 100%;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(0.82rem, 1.3vw, 1.02rem); color: #fff;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.65);
+      }
+      .matchup-extra p { margin: 0; }
+      .matchup-side--away .matchup-extra { text-align: right; }
+      #matchup[data-kind="touchdown"] .matchup-score,
+      #matchup[data-kind="halftime"] .matchup-score,
+      #matchup[data-kind="final"] .matchup-score { display: block; }
+      .matchup-result { display: none; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 8px; }
+      #matchup[data-kind="final"] .matchup-result { display: grid; }
+      #matchup[data-kind="final"] .matchup-extra { display: flex; }
+      #matchup-away-extra { align-items: flex-end; text-align: right; }
+      #matchup[data-kind="touchdown"] .matchup-vs,
+      #matchup[data-kind="halftime"] .matchup-vs,
+      #matchup[data-kind="final"] .matchup-vs {
+        width: min(46vw, 340px);
+        font-size: clamp(1.45rem, 3.6vw, 2.7rem);
+        letter-spacing: 0.14em;
+      }
+      #matchup[data-kind="final"] .matchup-vs { top: 8%; }
+      .matchup-side.is-scoring .matchup-score,
+      .matchup-side.is-winner .matchup-score {
+        text-shadow: 0 0 18px rgba(255, 214, 120, 0.9), 0 3px 0 rgba(8, 18, 48, 0.75);
+      }
+      .matchup-board {
+        display: none;
+        position: absolute; left: 50%; bottom: 58px; z-index: 2;
+        transform: translateX(-50%);
+        box-sizing: border-box;
+        width: min(56vw, 520px); max-height: 36vh; overflow: auto;
+        padding: 10px 14px 12px;
+        background: rgba(6, 12, 28, 0.78);
+        border: 1px solid rgba(216, 228, 248, 0.28);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+        pointer-events: none;
+      }
+      #matchup[data-kind="final"] .matchup-board { display: block; }
+      .matchup-verdict {
+        margin: 0 0 8px; text-align: center; color: #fff;
+        letter-spacing: 0.12em; text-transform: uppercase;
+        font-size: clamp(0.85rem, 1.5vw, 1.05rem);
+      }
+      .matchup-verdict[hidden], .matchup-defectors[hidden] { display: none; }
+      .matchup-stats {
+        width: 100%; border-collapse: collapse;
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 13px; color: #f4efe2;
+      }
+      .matchup-stats td { padding: 3px 6px; }
+      .matchup-stats td:first-child,
+      .matchup-stats td:last-child {
+        width: 3.2rem; text-align: right; font-weight: 800;
+        font-variant-numeric: tabular-nums;
+      }
+      .matchup-stats td:nth-child(2) { text-align: center; color: rgba(216, 228, 248, 0.82); }
+      .matchup-stats tr.is-home td:first-child { color: #9ec5ff; }
+      .matchup-stats tr.is-away td:last-child { color: #ffb4b4; }
+      .matchup-defectors {
+        margin: 8px 0 0; text-align: center;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 0.9rem; color: #fff;
       }
       .matchup-skip {
         position: absolute; left: 50%; bottom: 28px; z-index: 2; transform: translateX(-50%);
@@ -546,6 +618,10 @@
       @media (max-width: 720px) {
         .matchup-side { width: min(40vw, 240px); }
         .matchup-vs { font-size: clamp(2.2rem, 10vw, 3.4rem); }
+        #matchup[data-kind="touchdown"] .matchup-vs,
+        #matchup[data-kind="halftime"] .matchup-vs,
+        #matchup[data-kind="final"] .matchup-vs { font-size: clamp(1.2rem, 5vw, 1.8rem); }
+        .matchup-board { width: min(92vw, 520px); }
       }
       @media (prefers-reduced-motion: reduce) {
         #matchup.is-in .matchup-wash,
@@ -725,16 +801,27 @@
         <p class="matchup-kicker" data-i18n="hud.uiPanel.home">Home</p>
         <img class="matchup-crest" id="matchup-home-crest" alt="" hidden />
         <h2 class="matchup-team" id="matchup-home-team"></h2>
+        <p class="matchup-score" id="matchup-home-score"></p>
         <p class="matchup-coach" id="matchup-home-coach" hidden></p>
         <p class="matchup-meta" id="matchup-home-meta" hidden></p>
       </div>
-      <p class="matchup-vs" aria-hidden="true">VS</p>
+      <p class="matchup-vs" id="matchup-title" aria-hidden="true">VS</p>
       <div class="matchup-side matchup-side--away">
         <p class="matchup-kicker" data-i18n="hud.uiPanel.away">Away</p>
         <img class="matchup-crest" id="matchup-away-crest" alt="" hidden />
         <h2 class="matchup-team" id="matchup-away-team"></h2>
+        <p class="matchup-score" id="matchup-away-score"></p>
         <p class="matchup-coach" id="matchup-away-coach" hidden></p>
         <p class="matchup-meta" id="matchup-away-meta" hidden></p>
+      </div>
+      <div class="matchup-board" id="matchup-board">
+        <p class="matchup-verdict" id="matchup-verdict" hidden></p>
+        <div class="matchup-result">
+          <div class="matchup-extra" id="matchup-home-extra"></div>
+          <div class="matchup-extra" id="matchup-away-extra"></div>
+        </div>
+        <table class="matchup-stats" id="matchup-stats"></table>
+        <p class="matchup-defectors" id="matchup-defectors" hidden></p>
       </div>
       <p class="matchup-skip" data-i18n="hud.clickToSkip">Click to Skip</p>
     </div>

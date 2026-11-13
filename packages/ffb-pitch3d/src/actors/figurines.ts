@@ -21,6 +21,11 @@ import { edgeX, edgeZ, PITCH_COLUMNS, PITCH_ROWS, squareToWorld, TILE_SIZE } fro
 import { plateRect, type PlateRect } from './atlases';
 import { loadWalkStrip, walkSheetUrl, type WalkFace } from './walkPlates';
 
+const DISTRACTED_URL = new URL('../../assets/textures/distracted.png', import.meta.url).href;
+/** 315×509 : le phylactère est plus haut que large, la queue vers le bas. */
+const DISTRACTED_ASPECT = 315 / 509;
+const DISTRACTED_H = 0.64;
+
 const HOME_COLOR = 0x1a58ff;
 const AWAY_COLOR = 0xd74646;
 const PAWN_HEIGHT = 0.08;
@@ -32,6 +37,8 @@ const BASE_STATE_SERIOUS_INJURY = 0x07;
 const BASE_STATE_RIP = 0x08;
 const BASE_STATE_IN_AIR = 0x15;
 const FLAG_ACTIVE = 0x100;
+const FLAG_CONFUSED = 0x200;
+const FLAG_HYPNOTIZED = 0x800;
 /** Réserves au plus près de la touche, puis KO, puis blessés. */
 const DUGOUT_FILE_OFFSET = { reserve: 0, ko: 1, casualty: 2 } as const;
 
@@ -53,6 +60,10 @@ interface Actor {
   injury: Mesh | null;
   badgeKey: string;
   badgeToken: number;
+  /** Cylindre gris sous le socle : encore à jouer ce tour. */
+  readyMarker: Mesh;
+  /** Phylactère !? : confus ou hypnotisé, encore debout. */
+  distracted: Mesh;
   targetX: number;
   targetZ: number;
   targetScale: number;
@@ -109,8 +120,15 @@ export class Figurines {
   private readonly pawnGeometry = new CylinderGeometry(1, 1, PAWN_HEIGHT, 20);
   private readonly plateGeometry = new PlaneGeometry(1, 1);
   private readonly markerGeometry = new CylinderGeometry(0.46, 0.46, PAWN_HEIGHT / 2, 20);
+  private readonly markerMaterial = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
+  /** Équipe dont c'est le tour. Figé pendant les modes qui ne sont pas un tour d'équipe. */
+  private actingSide: boolean | null = null;
+  private actingGameId: number | null = null;
   private readonly iconGeometry = new PlaneGeometry(1, 1);
   private readonly injuryGeometry = new PlaneGeometry(0.42, 0.42);
+  private readonly distractedGeometry = new PlaneGeometry(DISTRACTED_H * DISTRACTED_ASPECT, DISTRACTED_H);
+  private readonly distractedMaterial: MeshBasicMaterial;
+  private readonly distractedTexture: Texture;
   private readonly injuryMaterial: MeshBasicMaterial;
   private readonly injuryTexture: CanvasTexture;
   private readonly iconTextures = new Map<string, Texture>();
@@ -119,6 +137,16 @@ export class Figurines {
   private lastTick = 0;
 
   constructor(scene: Scene) {
+    this.distractedTexture = this.iconLoader.load(DISTRACTED_URL);
+    this.distractedTexture.colorSpace = SRGBColorSpace;
+    this.distractedMaterial = new MeshBasicMaterial({
+      map: this.distractedTexture,
+      transparent: true,
+      alphaTest: 0.5,
+      side: DoubleSide,
+      depthWrite: false,
+      toneMapped: false,
+    });
     this.injuryTexture = injuryIconTexture();
     this.injuryMaterial = new MeshBasicMaterial({
       map: this.injuryTexture,
@@ -131,7 +159,10 @@ export class Figurines {
   }
 
   sync(game: GameJson, surfaceY: number): void {
-    const placed = placements(game, surfaceY);
+    const noted = noteActingSide(game, this.actingSide, this.actingGameId);
+    this.actingSide = noted.side;
+    this.actingGameId = noted.gameId;
+    const placed = placements(game, surfaceY, this.actingSide);
     const seen = new Set<string>();
     for (const place of placed) {
       seen.add(place.id);
@@ -161,6 +192,8 @@ export class Figurines {
       }
       const actor = this.actors.get(place.id);
       if (!actor) continue;
+      actor.readyMarker.visible = place.active;
+      actor.distracted.visible = place.distracted;
       this.ensureInjury(actor, place.injury);
       this.applyBadges(actor);
     }
@@ -268,6 +301,12 @@ export class Figurines {
       const look = Math.atan2(dx, dz);
       if (!actor.lockFacing) actor.plate.rotation.y = look;
       if (actor.injury) actor.injury.rotation.y = look;
+      if (actor.distracted.visible) {
+        actor.distracted.rotation.y = look;
+        const head = actor.pawnTop + actor.plateHeight;
+        const badgeLift = actor.skillGroup.children.length > 0 ? 0.36 : 0;
+        actor.distracted.position.y = head + badgeLift + DISTRACTED_H / 2 + 0.06;
+      }
       const yaw = actor.plate.rotation.y;
       // Bas du carré aligné sur le haut du socle, face caméra.
       const labelSize = actor.labelMesh.scale.y;
@@ -349,8 +388,12 @@ export class Figurines {
     this.pawnGeometry.dispose();
     this.plateGeometry.dispose();
     this.markerGeometry.dispose();
+    this.markerMaterial.dispose();
     this.iconGeometry.dispose();
     this.injuryGeometry.dispose();
+    this.distractedGeometry.dispose();
+    this.distractedMaterial.dispose();
+    this.distractedTexture.dispose();
     this.injuryMaterial.dispose();
     this.injuryTexture.dispose();
     for (const texture of this.iconTextures.values()) texture.dispose();
@@ -370,11 +413,18 @@ export class Figurines {
     pawn.position.y = 0.12;
     pawn.castShadow = true;
     root.add(pawn);
-    if (place.active) {
-      const marker = new Mesh(this.markerGeometry, new MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 }));
-      marker.position.y = 0.06;
-      root.add(marker);
-    }
+    const marker = new Mesh(this.markerGeometry, this.markerMaterial);
+    marker.userData.sharedMaterial = true;
+    marker.position.y = 0.06;
+    marker.visible = place.active;
+    marker.raycast = () => {};
+    root.add(marker);
+    const bubble = new Mesh(this.distractedGeometry, this.distractedMaterial);
+    bubble.userData.sharedMaterial = true;
+    bubble.visible = place.distracted;
+    bubble.raycast = () => {};
+    bubble.renderOrder = 4;
+    root.add(bubble);
     const plate = new Group();
     const lie = new Group();
     const front = plateRect(place.race, place.positionName, 'front');
@@ -416,6 +466,8 @@ export class Figurines {
       injury: null,
       badgeKey: '',
       badgeToken: 0,
+      readyMarker: marker,
+      distracted: bubble,
       targetX: place.x,
       targetZ: place.z,
       targetScale: place.scale,
@@ -499,17 +551,45 @@ interface Placement {
   injury: boolean;
   inAir: boolean;
   active: boolean;
+  distracted: boolean;
   signature: string;
 }
 
-function placements(game: GameJson, surfaceY: number): Placement[] {
+/** Tours où une équipe active ses figurines. Les autres modes gardent le côté déjà retenu. */
+const TEAM_TURN = new Set([
+  'regular',
+  'blitz',
+  'selectBlitzTarget',
+  'quickSnap',
+  'highKick',
+  'kickoffReturn',
+  'passBlock',
+]);
+
+/**
+ * Le serveur laisse le bit ACTIVE sur les deux équipes. On ne le suit que pour
+ * l'équipe dont c'est le tour, et on ignore les bascules d'un seul pas
+ * (entre deux tours, réaction adverse) qui ne changent pas qui joue.
+ */
+function noteActingSide(game: GameJson, previous: boolean | null, previousGameId: number | null): { side: boolean | null; gameId: number } {
+  const gameId = Number(game.gameId) || 0;
+  if (gameId !== previousGameId) previous = null;
+  const finished = game.finished != null && String(game.finished) !== '';
+  const mode = String(game.turnMode ?? '');
+  if (finished || mode === 'endGame') return { side: null, gameId };
+  if (!TEAM_TURN.has(mode)) return { side: previous, gameId };
+  if (game.homePlaying !== true && game.homePlaying !== false) return { side: previous, gameId };
+  return { side: game.homePlaying, gameId };
+}
+
+function placements(game: GameJson, surfaceY: number, actingSide: boolean | null): Placement[] {
   const out: Placement[] = [];
-  placeTeam(out, game.teamHome, game, true, surfaceY);
-  placeTeam(out, game.teamAway, game, false, surfaceY);
+  placeTeam(out, game.teamHome, game, true, surfaceY, actingSide);
+  placeTeam(out, game.teamAway, game, false, surfaceY, actingSide);
   return out;
 }
 
-function placeTeam(out: Placement[], team: TeamJson | undefined, game: GameJson, home: boolean, surfaceY: number): void {
+function placeTeam(out: Placement[], team: TeamJson | undefined, game: GameJson, home: boolean, surfaceY: number, actingSide: boolean | null): void {
   if (!team) return;
   const byId = new Map<string, PlayerJson>();
   for (const player of team.playerArray ?? []) byId.set(String(player.playerId), player);
@@ -526,6 +606,9 @@ function placeTeam(out: Placement[], team: TeamJson | undefined, game: GameJson,
       ? squareToWorld(coordinate[0], coordinate[1])
       : dugoutSpot(home, file, dugout[file]++);
     const positionName = positionNameOf(team, player);
+    const ready = onPitch && (state & FLAG_ACTIVE) !== 0 && home === actingSide;
+    const lying = onPitch ? base === BASE_STATE_PRONE || base === BASE_STATE_STUNNED : file !== 'reserve';
+    const distracted = !lying && ((state & (FLAG_CONFUSED | FLAG_HYPNOTIZED)) !== 0);
     out.push({
       id: String(player.playerId),
       number: Number(player.playerNr) || 0,
@@ -542,8 +625,9 @@ function placeTeam(out: Placement[], team: TeamJson | undefined, game: GameJson,
       stunned: onPitch ? base === BASE_STATE_STUNNED : file !== 'reserve',
       injury: !onPitch && file === 'casualty',
       inAir: onPitch && base === BASE_STATE_IN_AIR,
-      active: onPitch && (state & FLAG_ACTIVE) !== 0,
-      signature: `${positionName}|${player.playerNr}|${home ? 1 : 0}|${onPitch && (state & FLAG_ACTIVE) !== 0 ? 1 : 0}`,
+      active: ready,
+      distracted,
+      signature: `${positionName}|${player.playerNr}|${home ? 1 : 0}`,
     });
   }
 }
