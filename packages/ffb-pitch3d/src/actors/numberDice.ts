@@ -19,9 +19,11 @@ import {
 } from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
-const DIE_SIZE = 0.5;
-const SPACING = 0.68;
-const REST_Y = 1.45;
+/** Même cube et même écart que les dés de bloc. */
+const DIE_SIZE = 0.58;
+const SPACING = 0.78;
+/** Même hauteur de pose que les dés de bloc. */
+const REST_Y = 1.65;
 const ROLL_MS = 700;
 const HOLD_MS = 1100;
 const UP = new Vector3(0, 1, 0);
@@ -57,7 +59,7 @@ export interface NumberDiceSpec {
 
 export class NumberDice {
   readonly group = new Group();
-  private readonly bodyGeometry = new RoundedBoxGeometry(DIE_SIZE, DIE_SIZE, DIE_SIZE, 4, 0.055);
+  private readonly bodyGeometry = new RoundedBoxGeometry(DIE_SIZE, DIE_SIZE, DIE_SIZE, 4, 0.06);
   private readonly faceGeometry = new PlaneGeometry(DIE_SIZE * 0.72, DIE_SIZE * 0.72);
   private readonly bodyMaterial = new MeshStandardMaterial({
     color: 0xf6f1e6,
