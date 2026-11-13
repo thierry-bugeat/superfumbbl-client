@@ -88,7 +88,7 @@ export class Pitch3D {
     controls.enableDamping = false;
     controls.enablePan = true;
     controls.minDistance = 6;
-    controls.maxDistance = 42;
+    controls.maxDistance = 34;
     controls.minPolarAngle = TOP_DOWN_POLAR_RAD;
     controls.maxPolarAngle = HORIZONTAL_POLAR_RAD;
     controls.update();

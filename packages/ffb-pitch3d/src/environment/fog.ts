@@ -27,7 +27,7 @@ export class PitchFog {
   update(): void {
     if (!this.fog) return;
     const heightStart = 18;
-    const heightEnd = 42;
+    const heightEnd = 34;
     const t = MathUtils.clamp((this.camera.position.y - heightStart) / (heightEnd - heightStart), 0, 1);
     this.fog.density = this.baseDensity * MathUtils.lerp(1, 0.35, t);
   }
