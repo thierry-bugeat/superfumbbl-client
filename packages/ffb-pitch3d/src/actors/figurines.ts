@@ -29,6 +29,7 @@ const DISTRACTED_H = 0.64;
 const HOME_COLOR = 0x1a58ff;
 const AWAY_COLOR = 0xd74646;
 const PAWN_HEIGHT = 0.08;
+const BASE_STATE_STANDING = 0x01;
 const BASE_STATE_PRONE = 0x03;
 const BASE_STATE_STUNNED = 0x04;
 const BASE_STATE_KNOCKED_OUT = 0x05;
@@ -39,6 +40,8 @@ const BASE_STATE_IN_AIR = 0x15;
 const FLAG_ACTIVE = 0x100;
 const FLAG_CONFUSED = 0x200;
 const FLAG_HYPNOTIZED = 0x800;
+/** Socle semi-transparent une fois la figurine jouée (comme SpikeBowl). */
+const ACTED_PAWN_OPACITY = 0.5;
 /** Réserves au plus près de la touche, puis KO, puis blessés. */
 const DUGOUT_FILE_OFFSET = { reserve: 0, ko: 1, casualty: 2 } as const;
 
@@ -60,6 +63,8 @@ interface Actor {
   injury: Mesh | null;
   badgeKey: string;
   badgeToken: number;
+  /** Socle coloré : opacité 0.5 une fois la figurine jouée ce tour. */
+  pawn: Mesh;
   /** Cylindre gris sous le socle : encore à jouer ce tour. */
   readyMarker: Mesh;
   /** Phylactère !? : confus ou hypnotisé, encore debout. */
@@ -192,6 +197,7 @@ export class Figurines {
       }
       const actor = this.actors.get(place.id);
       if (!actor) continue;
+      paintPawnOpacity(actor.pawn, place.acted);
       actor.readyMarker.visible = place.active;
       actor.distracted.visible = place.distracted;
       this.ensureInjury(actor, place.injury);
@@ -408,7 +414,16 @@ export class Figurines {
     root.userData.signature = place.signature;
     root.userData.playerId = place.id;
     const radius = pawnRadius(place.strength);
-    const pawn = new Mesh(this.pawnGeometry, new MeshStandardMaterial({ color: place.color, roughness: 0.45, metalness: 0.08 }));
+    const pawn = new Mesh(
+      this.pawnGeometry,
+      new MeshStandardMaterial({
+        color: place.color,
+        roughness: 0.45,
+        metalness: 0.08,
+        transparent: place.acted,
+        opacity: place.acted ? ACTED_PAWN_OPACITY : 1,
+      }),
+    );
     pawn.scale.set(radius, 1, radius);
     pawn.position.y = 0.12;
     pawn.castShadow = true;
@@ -466,6 +481,7 @@ export class Figurines {
       injury: null,
       badgeKey: '',
       badgeToken: 0,
+      pawn,
       readyMarker: marker,
       distracted: bubble,
       targetX: place.x,
@@ -551,11 +567,13 @@ interface Placement {
   injury: boolean;
   inAir: boolean;
   active: boolean;
+  /** Équipe active, sur le terrain, sans bit ACTIVE : déjà joué ce tour (socle à 0.5). */
+  acted: boolean;
   distracted: boolean;
   signature: string;
 }
 
-/** Tours où une équipe active ses figurines. Les autres modes gardent le côté déjà retenu. */
+/** Tours où une équipe active ses figurines. */
 const TEAM_TURN = new Set([
   'regular',
   'blitz',
@@ -567,9 +585,38 @@ const TEAM_TURN = new Set([
 ]);
 
 /**
+ * Sous-modes au milieu d'une activation (dump-off, interception, bombes…).
+ * On conserve le côté pour ne pas rétablir les opacités en plein tour.
+ */
+const HOLD_ACTING_SIDE = new Set([
+  'dumpOff',
+  'interception',
+  'bombHome',
+  'bombAway',
+  'bombHomeBlitz',
+  'bombAwayBlitz',
+  'selectGazeTarget',
+  'selectBlockKind',
+  'raidingParty',
+  'hitAndRun',
+  'thenIStartedBlastin',
+  'safePairOfHands',
+  'trickster',
+  'wizard',
+  'illegalSubstitution',
+]);
+
+/**
  * Le serveur laisse le bit ACTIVE sur les deux équipes. On ne le suit que pour
- * l'équipe dont c'est le tour, et on ignore les bascules d'un seul pas
- * (entre deux tours, réaction adverse) qui ne changent pas qui joue.
+ * l'équipe dont c'est le tour.
+ *
+ * Fin de tour : le serveur oscille regular ↔ betweenTurns et fait clignoter
+ * homePlaying (regular → betweenTurns → regular → betweenTurns + côté inverse
+ * → regular + ancien côté → côté définitif). betweenTurns n'est pas une fin
+ * de tour : on garde le côté déjà retenu, sinon les socles passent à 1 puis
+ * reviennent à 0.5 à chaque aller-retour. Le rétablissement se fait une seule
+ * fois, quand un vrai mode de tour adopte le nouveau homePlaying, ou quand
+ * plus personne n'active (setup, kickoff, fin de match).
  */
 function noteActingSide(game: GameJson, previous: boolean | null, previousGameId: number | null): { side: boolean | null; gameId: number } {
   const gameId = Number(game.gameId) || 0;
@@ -577,9 +624,12 @@ function noteActingSide(game: GameJson, previous: boolean | null, previousGameId
   const finished = game.finished != null && String(game.finished) !== '';
   const mode = String(game.turnMode ?? '');
   if (finished || mode === 'endGame') return { side: null, gameId };
-  if (!TEAM_TURN.has(mode)) return { side: previous, gameId };
-  if (game.homePlaying !== true && game.homePlaying !== false) return { side: previous, gameId };
-  return { side: game.homePlaying, gameId };
+  if (mode === 'betweenTurns' || HOLD_ACTING_SIDE.has(mode)) return { side: previous, gameId };
+  if (TEAM_TURN.has(mode)) {
+    if (game.homePlaying !== true && game.homePlaying !== false) return { side: previous, gameId };
+    return { side: game.homePlaying, gameId };
+  }
+  return { side: null, gameId };
 }
 
 function placements(game: GameJson, surfaceY: number, actingSide: boolean | null): Placement[] {
@@ -607,6 +657,16 @@ function placeTeam(out: Placement[], team: TeamJson | undefined, game: GameJson,
       : dugoutSpot(home, file, dugout[file]++);
     const positionName = positionNameOf(team, player);
     const ready = onPitch && (state & FLAG_ACTIVE) !== 0 && home === actingSide;
+    // Comme boardProjection.actedPlayers / SpikeBowl : debout ou à terre, plus le bit ACTIVE,
+    // équipe au tour — pas le joueur en cours d'activation, pas un étourdi.
+    const actingId = game.actingPlayer?.playerId != null ? String(game.actingPlayer.playerId) : '';
+    const shadeable = base === BASE_STATE_STANDING || base === BASE_STATE_PRONE;
+    const acted = onPitch
+      && actingSide !== null
+      && home === actingSide
+      && shadeable
+      && (state & FLAG_ACTIVE) === 0
+      && String(player.playerId) !== actingId;
     const lying = onPitch ? base === BASE_STATE_PRONE || base === BASE_STATE_STUNNED : file !== 'reserve';
     const distracted = !lying && ((state & (FLAG_CONFUSED | FLAG_HYPNOTIZED)) !== 0);
     out.push({
@@ -626,6 +686,7 @@ function placeTeam(out: Placement[], team: TeamJson | undefined, game: GameJson,
       injury: !onPitch && file === 'casualty',
       inAir: onPitch && base === BASE_STATE_IN_AIR,
       active: ready,
+      acted,
       distracted,
       signature: `${positionName}|${player.playerNr}|${home ? 1 : 0}`,
     });
@@ -692,6 +753,16 @@ function pawnRadius(strength: number): number {
   if (strength === 5) return 0.46;
   if (strength >= 6) return 0.48;
   return 0.4;
+}
+
+/** Comme SpikeBowl : socle semi-transparent une fois la figurine activée ce tour. */
+function paintPawnOpacity(pawn: Mesh, acted: boolean): void {
+  const material = pawn.material as MeshStandardMaterial;
+  const opacity = acted ? ACTED_PAWN_OPACITY : 1;
+  if (material.opacity === opacity && material.transparent === acted) return;
+  material.transparent = acted;
+  material.opacity = opacity;
+  material.needsUpdate = true;
 }
 
 function pose(actor: Actor, prone: boolean, stunned: boolean): void {
