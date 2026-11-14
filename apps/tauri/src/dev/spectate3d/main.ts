@@ -19,7 +19,9 @@ import { renderChatEmoji } from '../../game/chatEmoji';
 import { t } from '../../i18n';
 import { SPECTATE3D_RETURN_MESSAGE } from '../../game/spectate3dSession';
 import { applyClientLanguage, applySpectate3dCopy } from './locale';
-import { fetchReplay, loadReplayText, ReplayTimeline, replayStillLive } from './replayTimeline';
+import type { ReplayCommand } from '../../game/replay/replayController';
+import { LiveSpectator } from './liveSpectator';
+import { fetchReplay, loadReplayText, ReplayTimeline } from './replayTimeline';
 import { SKILL_BADGE_MODES, skillBadgeUrls, type SkillBadgeMode } from './skillBadges';
 import { ceremoniesForStep, type CeremonyCard, type CeremonySide } from './ceremony';
 import { MATCHUP_DWELL_MS, matchupView, tvThousands, type MatchupSideView } from './matchup';
@@ -776,6 +778,11 @@ async function show(): Promise<void> {
   }
   renderMatchLog(matchLog.sync(current.commands, index, state));
   renderCoachChat(coachChat.sync(current.commands, index, state));
+  // Le serveur a posé l'heure de fin : plus rien n'arrivera, le socket et le bouton Direct s'en vont.
+  if (liveOpen && state.finished != null) {
+    liveOpen = false;
+    closeLiveSocket();
+  }
   paintLiveButton();
   if (generation !== seekGeneration) return;
   revealStage();
@@ -802,17 +809,8 @@ async function show(): Promise<void> {
   }
 }
 
-async function openLoadedReplay(atLive = false): Promise<void> {
-  if (atLive && liveOpen && timeline) {
-    const generation = ++followGeneration;
-    followingLive = true;
-    index = timeline.length - 1;
-    openingMatchup = true;
-    await show();
-    if (generation !== followGeneration) return;
-    startFollowingLive();
-    return;
-  }
+/** Ouverture d'un replay : au coup d'envoi. Le direct, lui, part de l'instantané du socket. */
+async function openLoadedReplay(): Promise<void> {
   index = 0;
   await seekFirstLineup();
   openingMatchup = true;
@@ -896,7 +894,6 @@ function stepTeamTurn(direction: -1 | 1): void {
   step(prior[prior.length - 1] ?? 0);
 }
 
-const LIVE_PULL_MS = 5000;
 const LIVE_CATCHUP_LIMIT = 24;
 let liveGameId = 0;
 let liveCoach = '';
@@ -904,13 +901,15 @@ let liveOpen = false;
 let spectateMode = false;
 let followingLive = false;
 let followGeneration = 0;
-let liveTimer = 0;
-let pullChain: Promise<number> = Promise.resolve(0);
+/** Socket spectateur : le serveur pousse chaque commande, rien n'est jamais re-téléchargé pour suivre. */
+let liveSocket: LiveSpectator | null = null;
+/** Un premier instantané a déjà été présenté : une reprise ne rejoue pas la séquence d'ouverture. */
+let liveRunning = false;
+let catchingUp = false;
 
 function stopFollowingLive(): void {
   followingLive = false;
   followGeneration += 1;
-  window.clearTimeout(liveTimer);
   paintLiveButton();
 }
 
@@ -920,8 +919,8 @@ function startFollowingLive(): void {
     return;
   }
   followingLive = true;
-  scheduleLivePull();
   paintLiveButton();
+  void runCatchUp();
 }
 
 function paintLiveButton(): void {
@@ -939,23 +938,15 @@ function paintLiveButton(): void {
   if (text) text.textContent = label;
 }
 
-function scheduleLivePull(): void {
-  window.clearTimeout(liveTimer);
-  if (!followingLive || !liveOpen) return;
-  liveTimer = window.setTimeout(() => { void pullLiveAndAdvance(); }, LIVE_PULL_MS);
-}
-
-/** Second téléchargement anonyme du même match. Les commandes déjà vues restent en place. */
-function pullReplay(): Promise<number> {
-  const run = pullChain.catch(() => 0).then(async () => {
-    if (!timeline || !liveGameId || !liveCoach || !liveOpen) return 0;
-    const bundle = await fetchReplay(liveGameId, liveCoach);
-    if (!timeline) return 0;
-    if (!replayStillLive(bundle)) liveOpen = false;
-    return timeline.extend(bundle.commands);
-  });
-  pullChain = run.then(() => 0, () => 0);
-  return run;
+/** Une seule boucle de rattrapage à la fois : les salves du socket arrivent plus vite qu'elle. */
+async function runCatchUp(): Promise<void> {
+  if (catchingUp) return;
+  catchingUp = true;
+  try {
+    await catchUp(followGeneration);
+  } finally {
+    catchingUp = false;
+  }
 }
 
 async function catchUp(generation: number): Promise<void> {
@@ -975,44 +966,14 @@ async function catchUp(generation: number): Promise<void> {
   }
 }
 
-async function pullLiveAndAdvance(): Promise<void> {
-  if (!followingLive || !timeline) return;
-  const generation = followGeneration;
-  const wasAtHead = index >= timeline.length - 1;
-  try {
-    const added = await pullReplay();
-    if (generation !== followGeneration || !followingLive) return;
-    if (added > 0 && wasAtHead) await catchUp(generation);
-  } catch {
-    // Le passage suivant réessaie. Le match déjà affiché reste en place.
-  }
-  if (!liveOpen) {
-    followingLive = false;
-    window.clearTimeout(liveTimer);
-    paintLiveButton();
-    return;
-  }
-  if (followingLive && generation === followGeneration) scheduleLivePull();
-}
-
 /** Dernière action connue, puis suivi des commandes qui arrivent ensuite. */
 async function goToLatest(): Promise<void> {
   followGeneration += 1;
   const generation = followGeneration;
   followingLive = false;
-  window.clearTimeout(liveTimer);
   setPlaying(false);
+  // Le socket a déjà poussé tout ce qui s'est joué : il n'y a rien à aller chercher.
   if (!timeline) return;
-  if (liveGameId && liveCoach && liveOpen) {
-    const previous = statusEl.textContent;
-    statusEl.textContent = t('spectate3d.status.downloading');
-    try {
-      await pullReplay();
-    } catch {
-      if (generation === followGeneration && previous) statusEl.textContent = previous;
-    }
-  }
-  if (generation !== followGeneration || !timeline) return;
   index = timeline.length - 1;
   await show();
   if (generation !== followGeneration) return;
@@ -1025,7 +986,98 @@ function watchLiveGame(gameId: number, coach: string, live: boolean): void {
   liveOpen = live;
 }
 
-window.addEventListener('pagehide', () => stopFollowingLive());
+/**
+ * Ouvre le socket spectateur. Le match affiché vient alors entièrement de lui : l'instantané de
+ * connexion sert de base, le flux écrit la suite. Sans compte FUMBBL lisible, l'appelant se
+ * rabat sur le replay téléchargé, qui ne suit pas le direct.
+ */
+function openLiveSocket(gameId: number, search: URLSearchParams): Promise<boolean> {
+  const socket = new LiveSpectator(gameId, {
+    onSnapshot: (game) => { void rebaseOnLiveSnapshot(game); },
+    onCommands: onLiveCommands,
+    onDown: (permanent) => {
+      if (!permanent || !liveSocket) return;
+      // Le socket ne reviendra pas : on coupe le direct au lieu de laisser croire qu'il suit.
+      liveOpen = false;
+      followingLive = false;
+      closeLiveSocket();
+      paintLiveButton();
+      // Mort avant le premier instantané : il n'y a rien à l'écran, le replay prend le relais.
+      if (!liveRunning) void showDownloadedReplay();
+    },
+  });
+  liveSocket = socket;
+  return socket.start(search).then((started) => {
+    if (!started && liveSocket === socket) {
+      liveSocket = null;
+      console.info('[spectate3d] aucun compte FUMBBL lisible : pas de direct, seul le replay téléchargé est affiché');
+    }
+    return started;
+  });
+}
+
+/**
+ * Repli quand il n'y a pas de direct : le match est téléchargé et montré tel quel, sans suivre la
+ * suite. En mode spectateur on ouvre sur la dernière action connue, qui est ce qu'on venait voir.
+ */
+async function showDownloadedReplay(): Promise<void> {
+  if (liveRunning || !liveGameId || !liveCoach) return;
+  const downloading = t('spectate3d.status.downloading');
+  statusEl.textContent = downloading;
+  noteLoading(downloading);
+  try {
+    timeline = ReplayTimeline.fromBundle(await fetchReplay(liveGameId, liveCoach));
+    if (!spectateMode) { await openLoadedReplay(); return; }
+    index = timeline.length - 1;
+    openingMatchup = true;
+    await show();
+  } catch (error) {
+    timeline = null;
+    statusEl.textContent = error instanceof Error ? error.message : String(error);
+    revealStage();
+  }
+}
+
+/**
+ * Nouvelle base : à la connexion, et à chaque reprise après une coupure. Le serveur ne rejoue pas
+ * ce qui s'est passé entre-temps, donc on repart de son état courant plutôt que de bricoler un
+ * raccord. Ce qui précède la connexion est perdu, et le journal repart de là.
+ */
+async function rebaseOnLiveSnapshot(game: GameJson): Promise<void> {
+  const generation = ++followGeneration;
+  timeline = ReplayTimeline.fromLiveSnapshot(game);
+  liveOpen = game.finished == null;
+  followingLive = liveOpen;
+  index = 0;
+  shownIndex = -1;
+  setPlaying(false);
+  openingMatchup = !liveRunning;
+  liveRunning = true;
+  // La base s'affiche d'abord. Ce qui arrive pendant reste dans le tampon du socket et sera
+  // appliqué dessus ensuite, au lieu de courir contre cette première présentation.
+  await show();
+  if (generation !== followGeneration) return;
+  armLiveSocket();
+  startFollowingLive();
+}
+
+function onLiveCommands(commands: readonly ReplayCommand[]): void {
+  if (!timeline) return;
+  timeline.appendLive(commands);
+  if (followingLive) void runCatchUp();
+}
+
+/** La timeline bâtie sur l'instantané est prête : le socket peut livrer ce qu'il a gardé. */
+function armLiveSocket(): void {
+  liveSocket?.open();
+}
+
+function closeLiveSocket(): void {
+  liveSocket?.stop();
+  liveSocket = null;
+}
+
+window.addEventListener('pagehide', () => { stopFollowingLive(); closeLiveSocket(); });
 
 document.querySelector('#first')?.addEventListener('click', () => step(0));
 document.querySelector('#prev')?.addEventListener('click', () => stepTeamTurn(-1));
@@ -1325,19 +1377,10 @@ const launchGame = Number(launch.get('gameId'));
 const launchCoach = launch.get('coach')?.trim() ?? '';
 spectateMode = launch.get('spectate') === '1';
 if (Number.isInteger(launchGame) && launchGame > 0 && launchCoach) {
-  const downloading = t('spectate3d.status.downloading');
-  statusEl.textContent = downloading;
-  noteLoading(downloading);
-  try {
-    const bundle = await fetchReplay(launchGame, launchCoach);
-    timeline = ReplayTimeline.fromBundle(bundle);
-    watchLiveGame(launchGame, launchCoach, spectateMode && replayStillLive(bundle));
-    await openLoadedReplay(spectateMode);
-  } catch (error) {
-    timeline = null;
-    statusEl.textContent = error instanceof Error ? error.message : String(error);
-    revealStage();
-  }
+  watchLiveGame(launchGame, launchCoach, false);
+  // En direct, le socket est la seule source : son instantané de connexion bâtit la timeline et son
+  // flux l'allonge. Le replay ne sert qu'à montrer le match quand même, sans le suivre.
+  if (!spectateMode || !(await openLiveSocket(launchGame, launch))) await showDownloadedReplay();
 } else {
   revealStage();
 }

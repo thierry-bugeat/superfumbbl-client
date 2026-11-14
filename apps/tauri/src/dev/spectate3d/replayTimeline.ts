@@ -6,7 +6,7 @@ import { applyReplayCommand, createReplaySeed, replayCommandIsTurnEnd } from '..
 import type { ReplayCommand } from '../../game/replay/replayController';
 
 /** Le ticket officiel pointe toujours vers ce socket. Le port déclaré dans le fichier n'est pas utilisé pour se connecter. */
-const FUMBBL_REPLAY_URL = 'ws://fumbbl.com:22223/command';
+export const FUMBBL_REPLAY_URL = 'ws://fumbbl.com:22223/command';
 
 export class ReplayTimeline {
   private readonly commandList: ReplayCommand[];
@@ -14,9 +14,14 @@ export class ReplayTimeline {
   /** Nombre de commandes déjà appliquées. 0 = état de départ. */
   private at = 0;
 
-  private constructor(private readonly finalState: GameJson, commands: readonly ReplayCommand[]) {
+  /** `rewind` : la base est l'état FINAL d'un replay, à remonter au coup d'envoi avant de rejouer. */
+  private constructor(private readonly base: GameJson, commands: readonly ReplayCommand[], private readonly rewind: boolean) {
     this.commandList = [...commands];
-    this.game = createReplaySeed(finalState);
+    this.game = this.seed();
+  }
+
+  private seed(): GameJson {
+    return this.rewind ? createReplaySeed(this.base) : structuredClone(this.base);
   }
 
   get commands(): readonly ReplayCommand[] {
@@ -24,23 +29,25 @@ export class ReplayTimeline {
   }
 
   /**
-   * Ajoute les commandes nouvelles d'un second téléchargement du même match.
-   * Le préfixe déjà connu doit coïncider, sinon on ne touche à rien.
+   * Ajoute la suite reçue par le socket du direct, dans l'ordre d'arrivée.
+   *
+   * Pas de dédoublonnage sur `commandNr` : le serveur renumérote le flux d'un replay en 1..N
+   * (`ServerReplay.orderCommands`) alors que le direct vient d'un autre générateur, donc les deux
+   * numérotations ne se bornent pas. Une base issue du socket évite la question : toutes les
+   * commandes viennent de la même session et arrivent une seule fois.
    */
-  extend(commands: readonly ReplayCommand[]): number {
-    if (commands.length <= this.commandList.length) return 0;
-    for (let i = 0; i < this.commandList.length; i += 1) {
-      const kept = this.commandList[i];
-      const incoming = commands[i];
-      if (!kept || !incoming || kept.commandNr !== incoming.commandNr || kept.netCommandId !== incoming.netCommandId) return 0;
-    }
-    const added = commands.slice(this.commandList.length);
-    this.commandList.push(...added);
-    return added.length;
+  appendLive(commands: readonly ReplayCommand[]): number {
+    this.commandList.push(...commands);
+    return commands.length;
   }
 
   static fromBundle(bundle: ReplayBundle): ReplayTimeline {
-    return new ReplayTimeline(bundle.finalState, bundle.commands);
+    return new ReplayTimeline(bundle.finalState, bundle.commands, true);
+  }
+
+  /** Direct : l'instantané reçu à la connexion est la base, le flux du socket écrit la suite. */
+  static fromLiveSnapshot(game: GameJson): ReplayTimeline {
+    return new ReplayTimeline(game, [], false);
   }
 
   /**
@@ -67,7 +74,7 @@ export class ReplayTimeline {
   async seek(index: number, onProgress?: (done: number, target: number) => void): Promise<GameJson> {
     const target = Math.max(0, Math.min(this.commands.length, index));
     if (target < this.at) {
-      this.game = createReplaySeed(this.finalState);
+      this.game = this.seed();
       this.at = 0;
     }
     while (this.at < target) {
@@ -97,11 +104,6 @@ export async function fetchReplay(gameId: number, coach: string): Promise<Replay
 
 export async function loadReplayFromServer(gameId: number, coach: string): Promise<ReplayTimeline> {
   return ReplayTimeline.fromBundle(await fetchReplay(gameId, coach));
-}
-
-/** Un match encore en cours : le serveur n'a pas posé d'heure de fin. */
-export function replayStillLive(bundle: ReplayBundle): boolean {
-  return bundle.finalState.finished == null;
 }
 
 /** JSON déjà téléchargé, ou fichier .jnlp (le match est alors demandé à FUMBBL). */
