@@ -167,7 +167,7 @@ function mountConsole(): void {
     toggle.setAttribute('aria-pressed', open ? 'true' : 'false');
   });
 
-  const tabs = panel.querySelectorAll<HTMLButtonElement>('.console-tabs [role="tab"]');
+  const tabs = Array.from(panel.querySelectorAll<HTMLButtonElement>('.console-tabs [role="tab"]'));
   for (const tab of tabs) {
     tab.addEventListener('click', () => showConsoleTab(tab));
   }
@@ -177,7 +177,7 @@ function mountConsole(): void {
 function showConsoleTab(tab: HTMLButtonElement): void {
   const panel = document.querySelector<HTMLElement>('#console');
   if (!panel) return;
-  const tabs = panel.querySelectorAll<HTMLButtonElement>('.console-tabs [role="tab"]');
+  const tabs = Array.from(panel.querySelectorAll<HTMLButtonElement>('.console-tabs [role="tab"]'));
   for (const other of tabs) {
     const selected = other === tab;
     other.setAttribute('aria-selected', selected ? 'true' : 'false');
@@ -216,7 +216,7 @@ function renderCoachChat(lines: readonly CoachChatLine[]): void {
         const emoji = document.createElement('span');
         emoji.className = 'chat-emoji';
         emoji.textContent = part.t;
-        emoji.title = part.code ?? part.t;
+        emoji.title = part.code;
         row.appendChild(emoji);
       } else {
         row.appendChild(document.createTextNode(part.t));
