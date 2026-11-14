@@ -13,7 +13,9 @@ import { blockDiceColor, blockRollAt } from './blockRoll';
 import { numberRollAt } from './numberRoll';
 import { describeState } from './describeState';
 import { mountPlayerCards } from './playerCard';
+import { CoachChat, type CoachChatLine } from './coachChat';
 import { MatchLog } from './matchLog';
+import { renderChatEmoji } from '../../game/chatEmoji';
 import { t } from '../../i18n';
 import { SPECTATE3D_RETURN_MESSAGE } from '../../game/spectate3dSession';
 import { applyClientLanguage, applySpectate3dCopy } from './locale';
@@ -164,6 +166,65 @@ function mountConsole(): void {
     toggle.classList.toggle('hud-btn--active', open);
     toggle.setAttribute('aria-pressed', open ? 'true' : 'false');
   });
+
+  const tabs = panel.querySelectorAll<HTMLButtonElement>('.console-tabs [role="tab"]');
+  for (const tab of tabs) {
+    tab.addEventListener('click', () => showConsoleTab(tab));
+  }
+  renderCoachChat([]);
+}
+
+function showConsoleTab(tab: HTMLButtonElement): void {
+  const panel = document.querySelector<HTMLElement>('#console');
+  if (!panel) return;
+  const tabs = panel.querySelectorAll<HTMLButtonElement>('.console-tabs [role="tab"]');
+  for (const other of tabs) {
+    const selected = other === tab;
+    other.setAttribute('aria-selected', selected ? 'true' : 'false');
+    const pane = panel.querySelector<HTMLElement>(`#${other.getAttribute('aria-controls')}`);
+    if (pane) pane.hidden = !selected;
+  }
+  if (tab.id === 'console-tab-chat') {
+    const pane = document.querySelector<HTMLElement>('#console-chat');
+    if (pane) pane.scrollTop = pane.scrollHeight;
+  }
+}
+
+function renderCoachChat(lines: readonly CoachChatLine[]): void {
+  const host = document.querySelector<HTMLElement>('#chat');
+  const scroller = host?.parentElement ?? null;
+  if (!host) return;
+  const stick = !scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 24;
+  host.replaceChildren();
+  if (lines.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'chat-empty';
+    empty.textContent = t('spectate3d.console.chatEmpty');
+    host.appendChild(empty);
+    return;
+  }
+  for (const line of lines) {
+    const row = document.createElement('p');
+    row.className = 'chat-line';
+    row.dataset.side = line.side;
+    const name = document.createElement('span');
+    name.className = 'chat-name';
+    name.textContent = line.coach;
+    row.append(name, document.createTextNode(': '));
+    for (const part of renderChatEmoji(line.text)) {
+      if (part.emoji) {
+        const emoji = document.createElement('span');
+        emoji.className = 'chat-emoji';
+        emoji.textContent = part.t;
+        emoji.title = part.code ?? part.t;
+        row.appendChild(emoji);
+      } else {
+        row.appendChild(document.createTextNode(part.t));
+      }
+    }
+    host.appendChild(row);
+  }
+  if (stick && scroller) scroller.scrollTop = scroller.scrollHeight;
 }
 
 const logsIcon = document.querySelector<HTMLImageElement>('#logs-icon');
@@ -233,6 +294,7 @@ stageEl.addEventListener('pointermove', (event) => {
 });
 
 const matchLog = new MatchLog();
+const coachChat = new CoachChat();
 let loggedTimeline: ReplayTimeline | null = null;
 let logExpanded = false;
 let logStickToBottom = true;
@@ -657,8 +719,10 @@ async function show(): Promise<void> {
     statusEl.textContent = t('spectate3d.status.empty');
     logEl.textContent = '';
     matchLog.reset();
+    coachChat.reset();
     loggedTimeline = null;
     renderMatchLog([]);
+    renderCoachChat([]);
     pitch.clearBlockDice();
     shownGame = null;
     applySkillBadges(null);
@@ -707,9 +771,11 @@ async function show(): Promise<void> {
   showCoaches(state);
   if (timeline !== loggedTimeline) {
     matchLog.reset();
+    coachChat.reset();
     loggedTimeline = timeline;
   }
   renderMatchLog(matchLog.sync(current.commands, index, state));
+  renderCoachChat(coachChat.sync(current.commands, index, state));
   paintLiveButton();
   if (generation !== seekGeneration) return;
   revealStage();

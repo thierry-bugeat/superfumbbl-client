@@ -1,4 +1,4 @@
-import type { GameJson } from '@fumbbl40k/ffb-protocol';
+import { NetCommandId, type GameJson } from '@fumbbl40k/ffb-protocol';
 import { t } from '../../i18n';
 import { parseJnlpXml } from '../../game/jnlpIntake';
 import { downloadReplay, parseReplayFile, type ReplayBundle } from '../../game/replay/replayLoader';
@@ -73,7 +73,7 @@ export class ReplayTimeline {
     while (this.at < target) {
       const command = this.commands[this.at];
       if (!command) break;
-      applyReplayCommand(this.game, command);
+      if (command.netCommandId !== NetCommandId.SERVER_TALK) applyReplayCommand(this.game, command);
       this.at += 1;
       if (onProgress && this.at % 100 === 0) {
         onProgress(this.at, target);
