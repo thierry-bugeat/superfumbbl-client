@@ -844,6 +844,9 @@ function step(next: number): void {
 }
 
 const playButton = document.querySelector<HTMLButtonElement>('#play');
+/** Durée d'une commande à l'écran, en lecture comme en direct. Une figurine traverse une case plus
+ *  vite que ça (`MOVE_SPEED`), donc chaque pas a le temps d'être rendu avant le suivant. */
+const STEP_MS = 220;
 let playing = false;
 let playTimer = 0;
 
@@ -859,7 +862,7 @@ function setPlaying(next: boolean): void {
     playButton.querySelector<SVGElement>('.icon-pause')?.toggleAttribute('hidden', !playing);
   }
   window.clearTimeout(playTimer);
-  if (playing) playTimer = window.setTimeout(() => { void advance(); }, 220);
+  if (playing) playTimer = window.setTimeout(() => { void advance(); }, STEP_MS);
 }
 
 async function advance(): Promise<void> {
@@ -877,7 +880,7 @@ async function advance(): Promise<void> {
     startFollowingLive();
     return;
   }
-  playTimer = window.setTimeout(() => { void advance(); }, 220);
+  playTimer = window.setTimeout(() => { void advance(); }, STEP_MS);
 }
 
 playButton?.addEventListener('click', () => setPlaying(!playing));
@@ -961,8 +964,11 @@ async function catchUp(generation: number): Promise<void> {
     index += 1;
     await show();
     if (generation !== followGeneration || !followingLive || playing) return;
-    if (!timeline || index >= timeline.length - 1) return;
-    await new Promise((resolve) => window.setTimeout(resolve, 220));
+    // Cette attente vaut aussi quand il ne reste rien à rattraper. Le serveur pousse les cases d'un
+    // déplacement en rafale : sans elle, la boucle rend la main entre deux commandes de la même
+    // rafale, chacune est appliquée à la vitesse du socket, et aucune image n'est rendue entre le
+    // départ et l'arrivée — la figurine traverse en ligne droite au lieu de marcher.
+    await new Promise((resolve) => window.setTimeout(resolve, STEP_MS));
   }
 }
 
