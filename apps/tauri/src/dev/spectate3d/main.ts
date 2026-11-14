@@ -286,15 +286,34 @@ function setLogExpanded(next: boolean): void {
 
 let shownLog: readonly string[] = [];
 
+/** Une seule file, de gauche à droite, calée sur le bord droit. « // » sépare les rapports. */
 function renderMatchLog(lines?: readonly string[]): void {
   if (lines) shownLog = lines;
   if (!matchLogEl) return;
-  if (shownLog.length === 0) {
-    matchLogEl.textContent = '';
+  const fragment = document.createDocumentFragment();
+  let first = true;
+  for (const line of shownLog) {
+    const text = line.trim();
+    if (!text) continue;
+    if (!first) {
+      const sep = document.createElement('span');
+      sep.className = 'log-sep';
+      sep.textContent = '//';
+      sep.setAttribute('aria-hidden', 'true');
+      fragment.appendChild(sep);
+    }
+    first = false;
+    const entry = document.createElement('span');
+    entry.className = 'log-entry';
+    entry.textContent = text;
+    fragment.appendChild(entry);
+  }
+  matchLogEl.replaceChildren(fragment);
+  if (!logExpanded) {
+    matchLogEl.scrollLeft = matchLogEl.scrollWidth;
     return;
   }
-  matchLogEl.textContent = logExpanded ? shownLog.join('\n') : shownLog[shownLog.length - 1] ?? '';
-  if (logExpanded && logStickToBottom && logInner) logInner.scrollTop = logInner.scrollHeight;
+  if (logStickToBottom && logInner) logInner.scrollTop = logInner.scrollHeight;
 }
 
 /**
