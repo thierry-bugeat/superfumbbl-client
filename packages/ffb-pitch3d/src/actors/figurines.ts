@@ -1,6 +1,8 @@
 import type { GameJson, PlayerJson, TeamJson } from '@fumbbl40k/ffb-protocol';
 import {
+  AdditiveBlending,
   CanvasTexture,
+  CircleGeometry,
   CylinderGeometry,
   DoubleSide,
   FrontSide,
@@ -42,6 +44,12 @@ const FLAG_CONFUSED = 0x200;
 const FLAG_HYPNOTIZED = 0x800;
 /** Socle semi-transparent une fois la figurine jouée (comme SpikeBowl). */
 const ACTED_PAWN_OPACITY = 0.5;
+/** Même rythme que le halo du tour actif (turn-halo, 1,6 s). */
+const SELECTED_PULSE_MS = 1600;
+const SELECTED_GLOW_MIN = 0.25;
+const SELECTED_GLOW_MAX = 1.2;
+const SELECTED_HALO_OPACITY_MIN = 0.45;
+const SELECTED_HALO_OPACITY_MAX = 1;
 /** Réserves au plus près de la touche, puis KO, puis blessés. */
 const DUGOUT_FILE_OFFSET = { reserve: 0, ko: 1, casualty: 2 } as const;
 
@@ -65,8 +73,10 @@ interface Actor {
   badgeToken: number;
   /** Socle coloré : opacité 0.5 une fois la figurine jouée ce tour. */
   pawn: Mesh;
-  /** Cylindre gris sous le socle : encore à jouer ce tour. */
+  /** Cylindre sous le socle : gris si encore à jouer, jaune vif si le coach l'a sélectionnée. */
   readyMarker: Mesh;
+  /** Halo au sol, visible seulement quand le coach a sélectionné la figurine. */
+  halo: Mesh;
   /** Phylactère !? : confus ou hypnotisé, encore debout. */
   distracted: Mesh;
   targetX: number;
@@ -126,6 +136,23 @@ export class Figurines {
   private readonly plateGeometry = new PlaneGeometry(1, 1);
   private readonly markerGeometry = new CylinderGeometry(0.46, 0.46, PAWN_HEIGHT / 2, 20);
   private readonly markerMaterial = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
+  private readonly selectedMarkerMaterial = new MeshStandardMaterial({
+    color: 0xffee00,
+    emissive: 0xffdd00,
+    emissiveIntensity: SELECTED_GLOW_MIN,
+    roughness: 0.28,
+  });
+  private readonly haloGeometry = new CircleGeometry(1.05, 40);
+  private readonly haloTexture = selectedHaloTexture();
+  private readonly haloMaterial = new MeshBasicMaterial({
+    map: this.haloTexture,
+    color: 0xffee66,
+    transparent: true,
+    opacity: SELECTED_HALO_OPACITY_MIN,
+    blending: AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
+  });
   /** Équipe dont c'est le tour. Figé pendant les modes qui ne sont pas un tour d'équipe. */
   private actingSide: boolean | null = null;
   private actingGameId: number | null = null;
@@ -198,7 +225,7 @@ export class Figurines {
       const actor = this.actors.get(place.id);
       if (!actor) continue;
       paintPawnOpacity(actor.pawn, place.acted);
-      actor.readyMarker.visible = place.active;
+      paintReadyMarker(actor.readyMarker, actor.halo, place.active, place.selected, this.markerMaterial, this.selectedMarkerMaterial);
       actor.distracted.visible = place.distracted;
       this.ensureInjury(actor, place.injury);
       this.applyBadges(actor);
@@ -235,6 +262,9 @@ export class Figurines {
 
   /** Glisse vers la case cible. Une case dure environ un sixième de seconde. */
   tick(now: number): void {
+    const wave = 0.5 - 0.5 * Math.cos((now / SELECTED_PULSE_MS) * Math.PI * 2);
+    this.selectedMarkerMaterial.emissiveIntensity = SELECTED_GLOW_MIN + (SELECTED_GLOW_MAX - SELECTED_GLOW_MIN) * wave;
+    this.haloMaterial.opacity = SELECTED_HALO_OPACITY_MIN + (SELECTED_HALO_OPACITY_MAX - SELECTED_HALO_OPACITY_MIN) * wave;
     const dt = this.lastTick ? Math.min(0.05, (now - this.lastTick) / 1000) : 0;
     this.lastTick = now;
     const step = MOVE_SPEED * dt;
@@ -263,6 +293,10 @@ export class Figurines {
         }
       }
       stepWalk(actor, moving && !actor.flight, now);
+      if (actor.halo.visible) {
+        const spread = 1 + wave * 0.14;
+        actor.halo.scale.set(spread, spread, 1);
+      }
       const scale = actor.root.scale.x + (actor.targetScale - actor.root.scale.x) * Math.min(1, dt * 8);
       actor.root.scale.setScalar(scale);
     }
@@ -395,6 +429,10 @@ export class Figurines {
     this.plateGeometry.dispose();
     this.markerGeometry.dispose();
     this.markerMaterial.dispose();
+    this.selectedMarkerMaterial.dispose();
+    this.haloGeometry.dispose();
+    this.haloMaterial.dispose();
+    this.haloTexture.dispose();
     this.iconGeometry.dispose();
     this.injuryGeometry.dispose();
     this.distractedGeometry.dispose();
@@ -428,12 +466,20 @@ export class Figurines {
     pawn.position.y = 0.12;
     pawn.castShadow = true;
     root.add(pawn);
-    const marker = new Mesh(this.markerGeometry, this.markerMaterial);
+    const marker = new Mesh(this.markerGeometry, place.selected ? this.selectedMarkerMaterial : this.markerMaterial);
     marker.userData.sharedMaterial = true;
     marker.position.y = 0.06;
-    marker.visible = place.active;
+    marker.visible = place.active || place.selected;
     marker.raycast = () => {};
     root.add(marker);
+    const halo = new Mesh(this.haloGeometry, this.haloMaterial);
+    halo.userData.sharedMaterial = true;
+    halo.rotation.x = -Math.PI / 2;
+    halo.position.y = 0.03;
+    halo.visible = place.selected;
+    halo.renderOrder = 2;
+    halo.raycast = () => {};
+    root.add(halo);
     const bubble = new Mesh(this.distractedGeometry, this.distractedMaterial);
     bubble.userData.sharedMaterial = true;
     bubble.visible = place.distracted;
@@ -483,6 +529,7 @@ export class Figurines {
       badgeToken: 0,
       pawn,
       readyMarker: marker,
+      halo,
       distracted: bubble,
       targetX: place.x,
       targetZ: place.z,
@@ -567,6 +614,8 @@ interface Placement {
   injury: boolean;
   inAir: boolean;
   active: boolean;
+  /** Le coach l'a sélectionnée : cylindre jaune vif. */
+  selected: boolean;
   /** Équipe active, sur le terrain, sans bit ACTIVE : déjà joué ce tour (socle à 0.5). */
   acted: boolean;
   distracted: boolean;
@@ -660,6 +709,7 @@ function placeTeam(out: Placement[], team: TeamJson | undefined, game: GameJson,
     // Comme boardProjection.actedPlayers / SpikeBowl : debout ou à terre, plus le bit ACTIVE,
     // équipe au tour — pas le joueur en cours d'activation, pas un étourdi.
     const actingId = game.actingPlayer?.playerId != null ? String(game.actingPlayer.playerId) : '';
+    const selected = onPitch && actingSide !== null && home === actingSide && String(player.playerId) === actingId;
     const shadeable = base === BASE_STATE_STANDING || base === BASE_STATE_PRONE;
     const acted = onPitch
       && actingSide !== null
@@ -686,6 +736,7 @@ function placeTeam(out: Placement[], team: TeamJson | undefined, game: GameJson,
       injury: !onPitch && file === 'casualty',
       inAir: onPitch && base === BASE_STATE_IN_AIR,
       active: ready,
+      selected,
       acted,
       distracted,
       signature: `${positionName}|${player.playerNr}|${home ? 1 : 0}`,
@@ -753,6 +804,42 @@ function pawnRadius(strength: number): number {
   if (strength === 5) return 0.46;
   if (strength >= 6) return 0.48;
   return 0.4;
+}
+
+/** Gris pour une figurine encore à jouer, jaune vif et halo pour celle que le coach a sélectionnée. */
+function paintReadyMarker(
+  marker: Mesh,
+  halo: Mesh,
+  active: boolean,
+  selected: boolean,
+  readyMaterial: MeshStandardMaterial,
+  selectedMaterial: MeshStandardMaterial,
+): void {
+  marker.visible = active || selected;
+  halo.visible = selected;
+  const next = selected ? selectedMaterial : readyMaterial;
+  if (marker.material !== next) marker.material = next;
+}
+
+/** Disque additif : anneau lumineux autour du cylindre, fondu vers l'extérieur. */
+function selectedHaloTexture(): CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const context = canvas.getContext('2d');
+  if (context) {
+    const gradient = context.createRadialGradient(128, 128, 0, 128, 128, 128);
+    gradient.addColorStop(0, 'rgba(255, 240, 120, 0)');
+    gradient.addColorStop(0.34, 'rgba(255, 230, 70, 0.15)');
+    gradient.addColorStop(0.46, 'rgba(255, 220, 40, 0.95)');
+    gradient.addColorStop(0.68, 'rgba(255, 190, 0, 0.4)');
+    gradient.addColorStop(1, 'rgba(255, 170, 0, 0)');
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 256, 256);
+  }
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  return texture;
 }
 
 /** Comme SpikeBowl : socle semi-transparent une fois la figurine activée ce tour. */
