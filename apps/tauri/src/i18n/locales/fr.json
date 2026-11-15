@@ -3428,6 +3428,7 @@
   "spectateBrowser.spectateServer": "Serveur de spectateurs",
   "spectateBrowser.superFumbbl": "Super FUMBBL",
   "spectateBrowser.superFumbbl2": "▶ Super FUMBBL",
+  "site.text.fumbblNotJson": "FUMBBL n'a pas renvoyé de données. Le site est peut-être en maintenance.",
   "spectateBrowser.text.failedToLoadP0": "Échec du chargement : {p0}",
   "spectateBrowser.text.groupId": "Groupe {id}",
   "spectateBrowser.text.hHalfTTurn": "MT{half} T{turn}",

@@ -3327,6 +3327,7 @@
   "spectateBrowser.spectateServer": "Spectate server",
   "spectateBrowser.superFumbbl": "Super FUMBBL",
   "spectateBrowser.superFumbbl2": "▶ Super FUMBBL",
+  "site.text.fumbblNotJson": "FUMBBL did not return data. The site may be under maintenance.",
   "spectateBrowser.text.failedToLoadP0": "Failed to load: {p0}",
   "spectateBrowser.text.groupId": "Group {id}",
   "spectateBrowser.text.hHalfTTurn": "H{half} T{turn}",

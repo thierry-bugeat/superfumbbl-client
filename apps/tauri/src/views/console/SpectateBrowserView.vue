@@ -14,6 +14,7 @@ import { deriveForkGameRows, routeForkSpectate, type ForkGameRow } from '../../g
 import { competitionLabel, groupByCompetition, missingCompetitionIds, type CompetitionNames } from '../../game/spectateCompetition';
 import { teamLogoUrl } from '../../game/teamLogos';
 import { vFitText } from '../../game/fitText'; // owner 11-05: group headings auto-fit their box
+import { FumbblInvalidJsonError, fumbblErrorDetail, readFumbblJson } from '../../game/fumbblJson';
 import { $t, useLiveSet } from '../../i18n';
 /** i18n live-switch registrations owned by this component (released on unmount; src/i18n LIVE-SWITCH POLICY). */
 const liveSetHere = useLiveSet();
@@ -72,7 +73,7 @@ defineProps<{ tourExample?: boolean }>();
 const browserMatches = ref<BrowserMatch[]>([]);
 /** i18n (Astra r1 #3): the list status is a DISCRIMINATOR; its text is derived at render, so a poll can compare it
  *  in any locale and a language switch re-renders it. */
-type BrowserListStatus = { kind: 'none' } | { kind: 'loading' } | { kind: 'empty' } | { kind: 'local' } | { kind: 'error'; detail: string };
+type BrowserListStatus = { kind: 'none' } | { kind: 'loading' } | { kind: 'empty' } | { kind: 'local' } | { kind: 'not-json' } | { kind: 'error'; detail: string };
 const browserListStatus = ref<BrowserListStatus>({ kind: 'none' });
 const browserStatus = computed(() => {
   const s = browserListStatus.value;
@@ -80,6 +81,7 @@ const browserStatus = computed(() => {
     case 'loading': return t('spectateBrowser.text.loadingLiveGames');
     case 'empty': return t('spectateBrowser.text.noLiveGamesRight');
     case 'local': return t('hud.text.theLocalSuperFumbbl');
+    case 'not-json': return t('spectateBrowser.text.failedToLoadP0', { p0: t('site.text.fumbblNotJson') });
     case 'error': return t('spectateBrowser.text.failedToLoadP0', { p0: s.detail });
     default: return '';
   }
@@ -210,11 +212,13 @@ async function refreshBrowser(): Promise<void> {
   browserListStatus.value = { kind: 'loading' };
   try {
     const res = await fetch(`${FUMBBL_SITE}/api/match/current`);
-    browserMatches.value = (await res.json()) as BrowserMatch[];
+    browserMatches.value = (await readFumbblJson(res)) as BrowserMatch[];
     browserListStatus.value = browserMatches.value.length ? { kind: 'none' } : { kind: 'empty' };
     void resolveCompetitionNames(browserMatches.value);
   } catch (error) {
-    browserListStatus.value = { kind: 'error', detail: String(error instanceof Error ? error.message : error) };
+    browserListStatus.value = error instanceof FumbblInvalidJsonError
+      ? { kind: 'not-json' }
+      : { kind: 'error', detail: fumbblErrorDetail(error) };
   }
 }
 
@@ -234,7 +238,7 @@ function startBrowserPoll(): void {
 async function pollBrowser(): Promise<void> {
   try {
     const res = await fetch(`${FUMBBL_SITE}/api/match/current`);
-    const incoming = (await res.json()) as BrowserMatch[];
+    const incoming = (await readFumbblJson(res)) as BrowserMatch[];
     mergeMatches(incoming);
     void resolveCompetitionNames(browserMatches.value);
     if (browserListStatus.value.kind === 'none' || browserListStatus.value.kind === 'empty')

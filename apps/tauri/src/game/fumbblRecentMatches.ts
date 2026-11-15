@@ -5,6 +5,7 @@
  * `id` is FUMBBL's match id and is kept only for the link.
  */
 import { fetchFumbblCoachTeams, type FumbblCoachTeam } from './fumbblCoachTeams';
+import { readFumbblJson } from './fumbblJson';
 import { FUMBBL_SITE } from './settings';
 
 export interface FumbblRecentMatch {
@@ -192,8 +193,7 @@ export async function fetchRecentFumbblMatches(coach: string, fetcher: FetchLike
     try {
       const url = `${FUMBBL_SITE}/api/team/matches/${team.id}/0`;
       const res = await (req.init ? fetcher(url, req.init) : fetcher(url));
-      if (!res.ok) { pagesFailed++; return []; }
-      const payload: unknown = await res.json();
+      const payload: unknown = await readFumbblJson(res);
       // review 2 (#3): FUMBBL answers some errors with HTTP 200 and a JSON string ("Error:3 No such command."): a page
       // that is not an array is a failed page (still read as no games, as before)
       if (!Array.isArray(payload)) { pagesFailed++; return []; }

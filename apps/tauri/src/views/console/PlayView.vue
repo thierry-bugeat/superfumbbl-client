@@ -29,6 +29,7 @@ import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { teamLogoUrl } from '../../game/teamLogos';
 import { fetchRecentFumbblMatches, recentTeamCapNote, type FumbblRecentMatch, type RecentTeamCap } from '../../game/fumbblRecentMatches';
 import { localPlayedTeamIds } from '../../game/recentPlayedTeams';
+import { fumbblErrorDetail, readFumbblJson } from '../../game/fumbblJson';
 import { parseActiveGames, phaseLabel, relativeTime, resultLetter, toBrowserMatch, type FumbblActiveGame, type FumbblActiveTeam } from '../../game/fumbblPlayBlade';
 import { gameStore } from '../../game/store';
 import { sharedReplayFileImporter } from '../../game/replay/replayFileImport';
@@ -87,11 +88,10 @@ async function refreshActive(): Promise<void> {
   activeLoading.value = true;
   try {
     const res = await (inTauri ? (tauriFetch as typeof fetch) : fetch)(`${FUMBBL_SITE}/api/match/current`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    activeGames.value = parseActiveGames(await res.json(), coach.value);
+    activeGames.value = parseActiveGames(await readFumbblJson(res), coach.value);
     activeError.value = '';
   } catch (error) {
-    liveSetHere(activeError, 'value', () => $t('play.text.couldNotLoadYour', { p0: error instanceof Error ? error.message : String(error) }));
+    liveSetHere(activeError, 'value', () => $t('play.text.couldNotLoadYour', { p0: fumbblErrorDetail(error) }));
   } finally { activeLoading.value = false; }
 }
 /** The lobby's own list may hold a waiting (not yet started) game that /api/match/current does not show. */
@@ -165,7 +165,7 @@ async function refreshRecent(): Promise<void> {
     if (matches.length) pruneStoredCoachProfiles([coach.value, ...matches.map((row) => row.opponentCoach)]);
     recentError.value = '';
   } catch (error) {
-    liveSetHere(recentError, 'value', () => $t('play.text.couldNotLoadYour2', { p0: error instanceof Error ? error.message : String(error) }));
+    liveSetHere(recentError, 'value', () => $t('play.text.couldNotLoadYour2', { p0: fumbblErrorDetail(error) }));
   } finally { recentLoading.value = false; }
 }
 function replayMatch(row: FumbblRecentMatch): void {

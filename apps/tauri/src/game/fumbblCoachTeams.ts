@@ -1,3 +1,4 @@
+import { readFumbblJson } from './fumbblJson';
 import { FUMBBL_SITE } from './settings';
 
 export interface FumbblRaceLogo {
@@ -71,8 +72,7 @@ export async function fetchFumbblCoachTeams(
 ): Promise<FumbblCoachTeamsResult> {
   const url = `${FUMBBL_SITE}/api/coach/teams/${encodeURIComponent(coachName)}`;
   const response = await (init ? fetcher(url, init) : fetcher(url));
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return parseFumbblCoachTeams(await response.json());
+  return parseFumbblCoachTeams(await readFumbblJson(response));
 }
 
 export function fumbblCoachTeamIconPath(team: Pick<FumbblCoachTeam, 'raceLogos'>): string | null {
