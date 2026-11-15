@@ -4,7 +4,8 @@ import { MathUtils } from 'three';
 const HORIZONTAL_POLAR_RAD = MathUtils.degToRad(89);
 const TOP_DOWN_POLAR_RAD = MathUtils.degToRad(2);
 /** À 45°, la distance est plus courte qu'avec une rampe linéaire : la caméra est plus près du sol. */
-const POLAR_CURVE = 0.5;
+//const POLAR_CURVE = 0.5; // Un peu trop bas pour la vision à 45° vers le sol. (Environs 9 unités du sol)
+const POLAR_CURVE = 0.65;
 
 export { HORIZONTAL_POLAR_RAD, TOP_DOWN_POLAR_RAD };
 
