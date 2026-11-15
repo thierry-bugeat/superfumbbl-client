@@ -1,0 +1,39 @@
+---
+description: Frontière entre le client 3D (spectate3d, ffb-pitch3d) et le client 2D existant
+alwaysApply: true
+---
+
+# Client 2D : importer oui, modifier non
+
+Le client 2D et le protocole FUMBBL ont un autre auteur. Le client 3D vit à côté, pas dedans.
+
+## Importer : autorisé
+
+`apps/tauri/src/dev/spectate3d/` peut importer `apps/tauri/src/game/**`, `apps/tauri/src/i18n/**`
+et `@fumbbl40k/ffb-*`. C'est le mécanisme prévu pour réutiliser le travail existant plutôt que
+de le dupliquer.
+
+Deux réflexes à garder :
+
+- **Import profond plutôt que barrel.** `@fumbbl40k/ffb-pitch/src/d6` n'embarque rien ;
+  `@fumbbl40k/ffb-pitch` tout court tire `renderer.ts` et Pixi, soit plusieurs Mo.
+- `packages/ffb-pitch3d/src` reste un moteur autonome : `three`, `@fumbbl40k/ffb-protocol`
+  et du relatif. Jamais `vue`, `pixi.js`, `@tauri-apps/*` ni `apps/`.
+
+## Modifier : non par défaut
+
+Une modification du client 2D part chez son auteur initial.
+
+Exception : une modification **minime et nécessaire**, dont la raison s'écrit en une phrase.
+Elle doit alors être déclarée dans `packages/ffb-pitch3d/scripts/client-2d-exceptions.json`
+(chemin → raison), sinon le garde-fou échoue. Une entrée sans raison ne vaut pas dérogation.
+
+Ne jamais modifier un fichier du client 2D en passant, au détour d'une autre tâche : le signaler
+et demander, même si le correctif est évident.
+
+## Vérifier
+
+```sh
+pnpm check   # avant un commit : garde-fou, puis typecheck du moteur 3D et de l'app
+node packages/ffb-pitch3d/scripts/check-boundaries.mjs --self-test  # le garde-fou mord-il encore
+```
