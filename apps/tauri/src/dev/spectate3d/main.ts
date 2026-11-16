@@ -1257,7 +1257,7 @@ function weatherKind(weather: string | undefined): 'sun' | 'heat' | 'rain' | 'sn
   return 'sun';
 }
 
-/** Décompte du tour, calé sur le bouton plein écran. Le direct suit `serverGameTime`. */
+/** Décompte du tour, collé au coin du coach qui joue. Le direct suit `serverGameTime`. */
 function paintTurnClock(game: GameJson | null, command: ReplayCommand | null, atStart: boolean): void {
   const root = document.querySelector<HTMLElement>('#turn-clock');
   const label = root?.querySelector<HTMLElement>('.turn-clock-time');
