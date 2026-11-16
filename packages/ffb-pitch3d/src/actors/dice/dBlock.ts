@@ -22,7 +22,7 @@ import {
 } from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
-const ATLAS_URL = new URL('../../assets/textures/block-dice-atlas.png', import.meta.url).href;
+const ATLAS_URL = new URL('../../../assets/textures/block-dice-atlas.png', import.meta.url).href;
 const DIE_SIZE = 0.58;
 const SPACING = 0.78;
 const REST_Y = 1.65;

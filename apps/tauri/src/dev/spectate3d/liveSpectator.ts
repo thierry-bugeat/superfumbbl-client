@@ -27,6 +27,11 @@ export interface LiveSpectatorHandlers {
   onSnapshot(game: GameJson): void;
   /** Nouvelles commandes à appliquer sur cette base, dans l'ordre d'arrivée. */
   onCommands(commands: readonly ReplayCommand[]): void;
+  /**
+   * Échantillon `serverGameTime` : millisecondes déjà passées dans le tour du coach.
+   * Ce n'est pas une commande de modèle, la timeline ne la rejoue pas.
+   */
+  onClock(sample: { gameTime: number; turnTime: number }): void;
   /** Le socket est tombé. `permanent` : il ne reviendra pas, l'appelant doit couper le direct. */
   onDown(permanent: boolean): void;
 }
@@ -100,7 +105,14 @@ export class LiveSpectator {
       this.handlers.onSnapshot(structuredClone(command.game) as GameJson);
     });
     session.on('command', (command) => {
-      if (this.session !== session || !isTimelineCommand(command)) return;
+      if (this.session !== session) return;
+      if (command.netCommandId === NetCommandId.SERVER_GAME_TIME) {
+        const gameTime = Number(command.gameTime);
+        const turnTime = Number(command.turnTime);
+        if (Number.isFinite(gameTime) && Number.isFinite(turnTime)) this.handlers.onClock({ gameTime, turnTime });
+        return;
+      }
+      if (!isTimelineCommand(command)) return;
       this.pending.push(structuredClone(command) as ReplayCommand);
       this.flush();
     });

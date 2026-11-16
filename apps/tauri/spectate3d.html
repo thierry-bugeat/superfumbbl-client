@@ -163,6 +163,35 @@
       .hud-bl .hud-btn { position: static; }
       .hud-btn--reset { right: 12px; }
       .hud-btn--fullscreen { right: 12px; bottom: 54px; z-index: 21; }
+      .turn-clock {
+        position: absolute; right: 12px; bottom: 96px; z-index: 21;
+        display: flex; align-items: center; gap: 7px;
+        height: 34px; padding: 0 14px 0 8px; pointer-events: none;
+        color: #f4f4f4;
+        font: italic 800 22px/1 Inter, "Segoe UI", sans-serif;
+        letter-spacing: 0.03em; font-variant-numeric: tabular-nums;
+        text-shadow: 0 1px 1px #000, 0 0 4px rgba(0, 0, 0, 0.85);
+        background:
+          linear-gradient(108deg,
+            rgba(0, 0, 0, 0) 0 8px,
+            rgba(22, 16, 12, 0.42) 8px 16px,
+            rgba(8, 8, 8, 0.72) 16px 40%,
+            rgba(0, 0, 0, 0.84) 50%,
+            rgba(12, 12, 12, 0.58) 64%,
+            rgba(8, 8, 8, 0.78) 100%);
+        clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%);
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+      }
+      .turn-clock[hidden] { display: none !important; }
+      .turn-clock-slash {
+        width: 7px; height: 24px; flex: none;
+        background: linear-gradient(#ff4a3c, #b71c1c);
+        transform: skewX(-24deg);
+        box-shadow: 1px 0 0 rgba(0, 0, 0, 0.35);
+      }
+      .turn-clock--home .turn-clock-slash { background: linear-gradient(#7ec4ff, #1a58ff); }
+      .turn-clock--away .turn-clock-slash { background: linear-gradient(#ff4a3c, #b71c1c); }
+      .turn-clock-glass { width: 18px; height: 18px; flex: none; filter: drop-shadow(0 1px 1px #000); }
       .coach {
         position: absolute; top: 46px; z-index: 4; pointer-events: none;
         display: flex; flex-direction: column; gap: 3px;
@@ -207,7 +236,23 @@
         margin-left: -24px;
         border: 3px solid #f3b4b4; background: radial-gradient(circle at 40% 35%, #e36b6b, #8f2b2b 72%);
       }
-      .coach--playing .coach-logo { box-shadow: 0 0 0 2px #f0c674, 0 2px 8px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(0, 0, 0, 0.45); }
+      .coach--home.coach--playing .coach-logo {
+        box-shadow: 0 0 0 2px #d7ecff, 0 0 16px 6px rgba(80, 160, 255, 0.9), 0 2px 6px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(0, 0, 0, 0.45);
+        animation: coach-halo-home 1.6s ease-in-out infinite;
+      }
+      .coach--away.coach--playing .coach-logo {
+        box-shadow: 0 0 0 2px #ffd4d4, 0 0 16px 6px rgba(255, 70, 70, 0.9), 0 2px 6px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(0, 0, 0, 0.45);
+        animation: coach-halo-away 1.6s ease-in-out infinite;
+      }
+      @keyframes coach-halo-home {
+        50% { box-shadow: 0 0 0 4px #f4f9ff, 0 0 28px 14px rgba(70, 150, 255, 1), 0 2px 8px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(0, 0, 0, 0.45); }
+      }
+      @keyframes coach-halo-away {
+        50% { box-shadow: 0 0 0 4px #fff5f5, 0 0 28px 14px rgba(255, 60, 60, 1), 0 2px 8px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(0, 0, 0, 0.45); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .coach--playing .coach-logo { animation: none; }
+      }
       .coach-resources { display: flex; flex-direction: column; gap: 4px; }
       .coach--home .coach-resources { padding-left: 62px; align-items: flex-start; }
       .coach--away .coach-resources { padding-right: 62px; align-items: flex-end; }
@@ -464,7 +509,7 @@
         background: #0a245a;
       }
       #matchup[hidden] { display: none !important; }
-      body:has(#matchup:not([hidden])) :is(#player, #console, .hud-bl, .hud-btn, .logbar, .turn-edge, .coach, .score) {
+      body:has(#matchup:not([hidden])) :is(#player, #console, .hud-bl, .hud-btn, .logbar, .turn-edge, .coach, .score, .turn-clock) {
         visibility: hidden !important;
       }
       .matchup-wash {
@@ -751,6 +796,14 @@
           <img id="console-icon" alt="" />
           <span>console</span>
         </button>
+      </div>
+      <div id="turn-clock" class="turn-clock" hidden data-i18n="spectate3d.turnClock" data-i18n-mode="aria" aria-label="Time left in this turn">
+        <span class="turn-clock-slash" aria-hidden="true"></span>
+        <svg class="turn-clock-glass" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="#fff" d="M6 2.5h12v1.8H6zm.8 2.6h10.4L12 11.2 17.2 18.8H6.8L12 11.2zM6 19.7h12v1.8H6z"/>
+          <path fill="#1a1a1a" d="M9.2 6.2h5.6L12 9.6z"/>
+        </svg>
+        <span class="turn-clock-time">0:00</span>
       </div>
       <button id="fullscreen" class="hud-btn hud-btn--fullscreen" type="button" title="Full Screen">
         <img id="fullscreen-icon" alt="" />

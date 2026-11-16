@@ -3433,6 +3433,7 @@
   "spectate3d.fold": "Replier {name}",
   "spectate3d.fullscreen.enter": "Plein écran",
   "spectate3d.fullscreen.leave": "Quitter le plein écran",
+  "spectate3d.turnClock": "Temps restant dans ce tour",
   "spectate3d.half.first": "1re mi-temps",
   "spectate3d.half.overtime": "Prolongations",
   "spectate3d.half.prematch": "Avant-match",

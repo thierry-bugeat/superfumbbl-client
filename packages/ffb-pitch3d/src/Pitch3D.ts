@@ -24,8 +24,8 @@ import { PitchHouse } from './environment/house';
 import { Figurines } from './actors/figurines';
 import { TackleZones } from './actors/tackleZones';
 import { PitchBall } from './actors/ball';
-import { BlockDice, type BlockDiceSpec } from './actors/dices/dBlock';
-import { NumberDice, type NumberDiceSpec } from './actors/dices/d6';
+import { BlockDice, type BlockDiceSpec } from './actors/dice/dBlock';
+import { NumberDice, type NumberDiceSpec } from './actors/dice/d6';
 import { disposeAtlases, loadAtlases } from './actors/atlases';
 import { pitchWeatherKey, WEATHER, type WeatherKey } from './weather';
 

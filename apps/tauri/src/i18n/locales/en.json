@@ -3331,6 +3331,7 @@
   "spectate3d.fold": "Collapse {name}",
   "spectate3d.fullscreen.enter": "Full Screen",
   "spectate3d.fullscreen.leave": "Leave Full Screen",
+  "spectate3d.turnClock": "Time left in this turn",
   "spectate3d.half.first": "1st half",
   "spectate3d.half.overtime": "Overtime",
   "spectate3d.half.prematch": "Pre-match",

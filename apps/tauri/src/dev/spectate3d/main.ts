@@ -26,6 +26,8 @@ import { SKILL_BADGE_MODES, skillBadgeUrls, type SkillBadgeMode } from './skillB
 import { ceremoniesForStep, type CeremonyCard, type CeremonySide } from './ceremony';
 import { MATCHUP_DWELL_MS, matchupView, tvThousands, type MatchupSideView } from './matchup';
 import { weatherBannersForStep, type WeatherBanner, type WeatherBannerKey } from './weatherBanner';
+import { turnSideIsHome } from '../../game/blastinSecondBeat';
+import { formatTurnRemaining, gameClockStopped, readElapsedMs, resolveTurnElapsed, turnLimitMs } from './turnClock';
 
 applyClientLanguage();
 applySpectate3dCopy();
@@ -281,6 +283,10 @@ document.querySelector<HTMLButtonElement>('#skills')?.addEventListener('click', 
 
 const playerCards = mountPlayerCards();
 let shownGame: GameJson | null = null;
+/** Dernière commande affichée. Sert à la pendule hors direct, quand elle porte `turnTime`. */
+let shownCommand: ReplayCommand | null = null;
+/** Millisecondes déjà passées, dernier `serverGameTime`. Le direct seul s'en sert. */
+let liveElapsed: number | null = null;
 document.querySelector<HTMLButtonElement>('#player-card')?.addEventListener('click', () => {
   const button = document.querySelector<HTMLButtonElement>('#player-card');
   if (!button) return;
@@ -729,6 +735,8 @@ async function show(): Promise<void> {
     shownGame = null;
     applySkillBadges(null);
     showCoaches(null);
+    shownCommand = null;
+    paintTurnClock(null, null, false);
     announcedWeather = null;
     shownIndex = -1;
     finalCeremonyShown = false;
@@ -771,6 +779,8 @@ async function show(): Promise<void> {
   showTurns(state);
   showScore(state);
   showCoaches(state);
+  shownCommand = command;
+  paintTurnClock(state, command, index === 0);
   if (timeline !== loggedTimeline) {
     matchLog.reset();
     coachChat.reset();
@@ -923,6 +933,7 @@ function startFollowingLive(): void {
   }
   followingLive = true;
   paintLiveButton();
+  if (shownGame) paintTurnClock(shownGame, shownCommand, index === 0);
   void runCatchUp();
 }
 
@@ -1001,6 +1012,10 @@ function openLiveSocket(gameId: number, search: URLSearchParams): Promise<boolea
   const socket = new LiveSpectator(gameId, {
     onSnapshot: (game) => { void rebaseOnLiveSnapshot(game); },
     onCommands: onLiveCommands,
+    onClock: (sample) => {
+      liveElapsed = sample.turnTime;
+      if (followingLive && shownGame) paintTurnClock(shownGame, shownCommand, index === 0);
+    },
     onDown: (permanent) => {
       if (!permanent || !liveSocket) return;
       // Le socket ne reviendra pas : on coupe le direct au lieu de laisser croire qu'il suit.
@@ -1050,6 +1065,7 @@ async function showDownloadedReplay(): Promise<void> {
  * raccord. Ce qui précède la connexion est perdu, et le journal repart de là.
  */
 async function rebaseOnLiveSnapshot(game: GameJson): Promise<void> {
+  liveElapsed = readElapsedMs(game.turnTime);
   const generation = ++followGeneration;
   timeline = ReplayTimeline.fromLiveSnapshot(game);
   liveOpen = game.finished == null;
@@ -1241,6 +1257,31 @@ function weatherKind(weather: string | undefined): 'sun' | 'heat' | 'rain' | 'sn
   return 'sun';
 }
 
+/** Décompte du tour, calé sur le bouton plein écran. Le direct suit `serverGameTime`. */
+function paintTurnClock(game: GameJson | null, command: ReplayCommand | null, atStart: boolean): void {
+  const root = document.querySelector<HTMLElement>('#turn-clock');
+  const label = root?.querySelector<HTMLElement>('.turn-clock-time');
+  if (!root || !label) return;
+  const elapsed = game
+    ? resolveTurnElapsed({
+      finished: gameClockStopped(game),
+      followingLive,
+      liveElapsed,
+      commandElapsed: readElapsedMs(command?.turnTime),
+      snapshotElapsed: atStart && liveRunning ? readElapsedMs(game.turnTime) : null,
+    })
+    : null;
+  if (elapsed === null || !game) {
+    root.hidden = true;
+    return;
+  }
+  label.textContent = formatTurnRemaining(elapsed, turnLimitMs(game));
+  const home = turnSideIsHome(game);
+  root.classList.toggle('turn-clock--home', home);
+  root.classList.toggle('turn-clock--away', !home);
+  root.hidden = false;
+}
+
 function showScore(game: GameJson): void {
   const plate = document.querySelector<HTMLElement>('.score');
   const homeNum = document.querySelector<HTMLElement>('#score-home-num');
@@ -1335,8 +1376,9 @@ function fillResources(host: HTMLElement, turn: TurnDataJson | undefined): void 
 }
 
 function showCoaches(game: GameJson | null): void {
-  fillCoach('home', game?.teamHome, game?.turnDataHome, game?.homePlaying === true, game);
-  fillCoach('away', game?.teamAway, game?.turnDataAway, game?.homePlaying === false, game);
+  const home = game ? turnSideIsHome(game) : false;
+  fillCoach('home', game?.teamHome, game?.turnDataHome, home, game);
+  fillCoach('away', game?.teamAway, game?.turnDataAway, game ? !home : false, game);
 }
 
 function fillCoach(
