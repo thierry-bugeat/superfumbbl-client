@@ -1,5 +1,5 @@
 import { d6FaceUrl, isD6FaceValue } from '@fumbbl40k/ffb-pitch/src/d6';
-import { Pitch3D, type PitchDiagnostics } from '@fumbbl40k/ffb-pitch3d';
+import { MOVE_SQUARE_MS, Pitch3D, type PitchDiagnostics } from '@fumbbl40k/ffb-pitch3d';
 import type { GameJson, TeamJson, TurnDataJson } from '@fumbbl40k/ffb-protocol';
 import { terms } from '../../i18n/terms';
 import { crestDataUrl } from '../../game/teamCrests';
@@ -880,11 +880,12 @@ function step(next: number): void {
 }
 
 const playButton = document.querySelector<HTMLButtonElement>('#play');
-/** Durée d'une commande à l'écran, en lecture comme en direct. Une figurine traverse une case plus
- *  vite que ça (`MOVE_SPEED`), donc chaque pas a le temps d'être rendu avant le suivant. */
-const STEP_MS = 220;
+/** Durée d'une commande à l'écran. C'est aussi la durée d'une case : la suivante part sans arrêt. */
+const STEP_MS = MOVE_SQUARE_MS;
 let playing = false;
 let playTimer = 0;
+let playGeneration = 0;
+let stepDue = 0;
 
 function setPlaying(next: boolean): void {
   if (next && timeline && index < timeline.length - 1) stopFollowingLive();
@@ -898,11 +899,15 @@ function setPlaying(next: boolean): void {
     playButton.querySelector<SVGElement>('.icon-pause')?.toggleAttribute('hidden', !playing);
   }
   window.clearTimeout(playTimer);
-  if (playing) playTimer = window.setTimeout(() => { void advance(); }, STEP_MS);
+  playGeneration += 1;
+  if (!playing) return;
+  const generation = playGeneration;
+  stepDue = performance.now() + STEP_MS;
+  playTimer = window.setTimeout(() => { void advance(generation); }, STEP_MS);
 }
 
-async function advance(): Promise<void> {
-  if (!playing || !timeline) return;
+async function advance(generation: number): Promise<void> {
+  if (generation !== playGeneration || !playing || !timeline) return;
   if (index >= timeline.length - 1) {
     setPlaying(false);
     startFollowingLive();
@@ -910,13 +915,16 @@ async function advance(): Promise<void> {
   }
   index += 1;
   await show();
-  if (!playing || !timeline) return;
+  if (generation !== playGeneration || !playing || !timeline) return;
   if (index >= timeline.length - 1) {
     setPlaying(false);
     startFollowingLive();
     return;
   }
-  playTimer = window.setTimeout(() => { void advance(); }, STEP_MS);
+  stepDue += STEP_MS;
+  if (stepDue < performance.now()) stepDue = performance.now();
+  const wait = stepDue - performance.now();
+  playTimer = window.setTimeout(() => { void advance(generation); }, wait);
 }
 
 playButton?.addEventListener('click', () => setPlaying(!playing));
@@ -1021,6 +1029,7 @@ async function runCatchUp(): Promise<void> {
 }
 
 async function catchUp(generation: number): Promise<void> {
+  let due = performance.now();
   while (timeline && generation === followGeneration && followingLive && !playing) {
     const behind = timeline.length - 1 - index;
     if (behind <= 0) return;
@@ -1032,11 +1041,12 @@ async function catchUp(generation: number): Promise<void> {
     index += 1;
     await show();
     if (generation !== followGeneration || !followingLive || playing) return;
-    // Cette attente vaut aussi quand il ne reste rien à rattraper. Le serveur pousse les cases d'un
-    // déplacement en rafale : sans elle, la boucle rend la main entre deux commandes de la même
-    // rafale, chacune est appliquée à la vitesse du socket, et aucune image n'est rendue entre le
-    // départ et l'arrivée — la figurine traverse en ligne droite au lieu de marcher.
-    await new Promise((resolve) => window.setTimeout(resolve, STEP_MS));
+    // Le serveur pousse les cases d'un déplacement en rafale. On les espace du pas de marche :
+    // chaque case est traversée, et la suivante part sans que la figurine s'arrête.
+    due += STEP_MS;
+    const wait = due - performance.now();
+    if (wait > 0) await new Promise((resolve) => window.setTimeout(resolve, wait));
+    else due = performance.now();
   }
 }
 

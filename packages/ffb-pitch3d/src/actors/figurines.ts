@@ -87,12 +87,42 @@ interface Actor {
   landingStunned: boolean;
   /** Lancer ou botté : origine du vol. Null une fois retombé. */
   flight: { startX: number; startZ: number; height: number } | null;
+  /** Cases déjà connues. Les segments partagent une horloge, sans arrêt entre deux cases. */
+  route: Route | null;
+  /** Dernier instant de marche, pour garder le pas le temps que la case suivante arrive. */
+  walkMovedAt: number;
   walk: WalkCycle | null;
 }
 
 const MOVE_SPEED = 6;
+/**
+ * Une case de marche. Le spectateur montre chaque commande à ce même rythme :
+ * la figurine pose le pied sur la case au moment où la suivante est connue,
+ * et le segment d'après prend le relais sans repasser par l'arrêt.
+ */
+export const MOVE_SQUARE_MS = 220;
+/** La commande peut tomber une ou deux images après la case : on l'enchaîne encore. */
+const CHAIN_LATE_MS = 32;
+const SAME_POINT = 0.05;
+const KING_STEP = TILE_SIZE + 0.05;
+/** Le cycle de pas ne revient pas à la pose immobile entre deux cases. */
+const WALK_HOLD_MS = 48;
 /** Cinq images par seconde : à 10, le cycle défile avant qu'on voie le pas. */
 const WALK_FRAME_MS = 200;
+
+interface RoutePoint {
+  x: number;
+  z: number;
+}
+
+interface Route {
+  points: RoutePoint[];
+  start: number;
+  segmentMs: number;
+  /** Marche d'une case à l'autre. Une glissade longue (saut dans le temps, poussée) n'enchaîne pas. */
+  chain: boolean;
+}
+
 /** Même lob que le renvoi du public dans FoulBall : 4·h·t·(1−t), h selon la distance. */
 const FLIGHT_ARC_BASE = 1.6;
 const FLIGHT_ARC_PER_TILE = 0.48;
@@ -102,6 +132,68 @@ function flightHeight(distance: number): number {
   return Math.min(FLIGHT_ARC_MAX, FLIGHT_ARC_BASE + distance * FLIGHT_ARC_PER_TILE);
 }
 
+function kingDistance(ax: number, az: number, bx: number, bz: number): number {
+  return Math.max(Math.abs(ax - bx), Math.abs(az - bz));
+}
+
+/**
+ * Une case voisine s'ajoute au trajet en cours. La vitesse reste celle du premier pas :
+ * on ne revient pas au centre pour redémarrer. Un saut plus long repart de la position visible.
+ */
+function steerRoute(actor: Actor, x: number, z: number, now: number): void {
+  const route = actor.route;
+  const last = route?.points[route.points.length - 1];
+  if (last && Math.hypot(last.x - x, last.z - z) <= SAME_POINT) return;
+
+  if (route?.chain && last) {
+    const segments = route.points.length - 1;
+    const idle = now - route.start - segments * route.segmentMs;
+    const king = kingDistance(last.x, last.z, x, z);
+    if (idle <= CHAIN_LATE_MS && king <= KING_STEP) {
+      route.points.push({ x, z });
+      return;
+    }
+  }
+
+  const fromX = actor.root.position.x;
+  const fromZ = actor.root.position.z;
+  if (Math.hypot(fromX - x, fromZ - z) <= SAME_POINT) {
+    actor.route = null;
+    actor.root.position.x = x;
+    actor.root.position.z = z;
+    return;
+  }
+  const distance = Math.hypot(x - fromX, z - fromZ);
+  const chain = kingDistance(fromX, fromZ, x, z) <= KING_STEP;
+  actor.route = {
+    points: [{ x: fromX, z: fromZ }, { x, z }],
+    start: now,
+    segmentMs: Math.max(1, chain ? MOVE_SQUARE_MS : (distance / MOVE_SPEED) * 1000),
+    chain,
+  };
+}
+
+/** Position sur le trajet. `false` une fois la dernière case atteinte. */
+function followRoute(actor: Actor, now: number): boolean {
+  const route = actor.route;
+  const segments = route ? route.points.length - 1 : 0;
+  const end = route?.points[segments];
+  if (!route || !end || segments <= 0) return false;
+  const elapsed = now - route.start;
+  if (elapsed >= segments * route.segmentMs) {
+    actor.root.position.x = end.x;
+    actor.root.position.z = end.z;
+    return false;
+  }
+  const segment = Math.min(segments - 1, Math.floor(elapsed / route.segmentMs));
+  const t = (elapsed - segment * route.segmentMs) / route.segmentMs;
+  const from = route.points[segment] ?? end;
+  const to = route.points[segment + 1] ?? end;
+  actor.root.position.x = from.x + (to.x - from.x) * t;
+  actor.root.position.z = from.z + (to.z - from.z) * t;
+  return true;
+}
+
 /** Le modèle rattrape le vol. Tant qu'il est encore au départ, la cible du lancer reste. */
 function adoptPlace(actor: Actor, place: Placement): void {
   if (!actor.flight) {
@@ -109,8 +201,10 @@ function adoptPlace(actor: Actor, place: Placement): void {
     actor.targetZ = place.z;
     actor.root.position.y = place.y;
     pose(actor, place.prone, place.stunned);
+    steerRoute(actor, place.x, place.z, performance.now());
     return;
   }
+  actor.route = null;
   const atStart = Math.hypot(place.x - actor.flight.startX, place.z - actor.flight.startZ) < 0.2;
   if (!place.inAir && atStart) {
     actor.flight = null;
@@ -118,6 +212,7 @@ function adoptPlace(actor: Actor, place: Placement): void {
     actor.targetZ = place.z;
     actor.root.position.y = place.y;
     pose(actor, place.prone, place.stunned);
+    steerRoute(actor, place.x, place.z, performance.now());
     return;
   }
   if (!atStart) {
@@ -203,6 +298,10 @@ export class Figurines {
         const from = existing?.root.position;
         const flight = existing?.flight ? { ...existing.flight } : null;
         const aim = existing ? { x: existing.targetX, z: existing.targetZ } : null;
+        const route = existing?.route
+          ? { ...existing.route, points: existing.route.points.map((point) => ({ ...point })) }
+          : null;
+        const walkMovedAt = existing?.walkMovedAt ?? 0;
         existing?.root.removeFromParent();
         if (existing) disposeActor(existing);
         const actor = this.build(place);
@@ -212,6 +311,8 @@ export class Figurines {
           actor.targetX = aim.x;
           actor.targetZ = aim.z;
         }
+        actor.walkMovedAt = walkMovedAt;
+        if (route) actor.route = route;
         adoptPlace(actor, place);
         this.actors.set(place.id, actor);
         this.group.add(actor.root);
@@ -245,6 +346,8 @@ export class Figurines {
   flyTo(id: string, x: number, z: number): void {
     const actor = this.actors.get(id);
     if (!actor) return;
+    actor.route = null;
+    actor.walkMovedAt = 0;
     actor.targetX = x;
     actor.targetZ = z;
     const originX = actor.flight?.startX ?? actor.root.position.x;
@@ -260,7 +363,7 @@ export class Figurines {
     pose(actor, false, false);
   }
 
-  /** Glisse vers la case cible. Une case dure environ un sixième de seconde. */
+  /** Suit la marche. Une case dure le pas de lecture, la suivante enchaîne sans arrêt. */
   tick(now: number): void {
     const wave = 0.5 - 0.5 * Math.cos((now / SELECTED_PULSE_MS) * Math.PI * 2);
     this.selectedMarkerMaterial.emissiveIntensity = SELECTED_GLOW_MIN + (SELECTED_GLOW_MAX - SELECTED_GLOW_MIN) * wave;
@@ -269,30 +372,33 @@ export class Figurines {
     this.lastTick = now;
     const step = MOVE_SPEED * dt;
     for (const actor of this.actors.values()) {
-      const dx = actor.targetX - actor.root.position.x;
-      const dz = actor.targetZ - actor.root.position.z;
-      const distance = Math.hypot(dx, dz);
-      const moving = distance > step && distance >= 0.0001;
-      if (!moving) {
-        actor.root.position.x = actor.targetX;
-        actor.root.position.z = actor.targetZ;
-        if (actor.flight) {
+      let moving = false;
+      if (actor.flight) {
+        const dx = actor.targetX - actor.root.position.x;
+        const dz = actor.targetZ - actor.root.position.z;
+        const distance = Math.hypot(dx, dz);
+        moving = distance > step && distance >= 0.0001;
+        if (!moving) {
+          actor.root.position.x = actor.targetX;
+          actor.root.position.z = actor.targetZ;
           actor.root.position.y = actor.groundY;
           actor.flight = null;
           pose(actor, actor.landingProne, actor.landingStunned);
-        }
-      } else {
-        actor.root.position.x += (dx / distance) * step;
-        actor.root.position.z += (dz / distance) * step;
-        const flight = actor.flight;
-        if (flight) {
+        } else {
+          actor.root.position.x += (dx / distance) * step;
+          actor.root.position.z += (dz / distance) * step;
+          const flight = actor.flight;
           const total = Math.hypot(actor.targetX - flight.startX, actor.targetZ - flight.startZ);
           const traveled = Math.hypot(actor.root.position.x - flight.startX, actor.root.position.z - flight.startZ);
           const t = total <= 0.0001 ? 1 : Math.min(1, traveled / total);
           actor.root.position.y = actor.groundY + 4 * flight.height * t * (1 - t);
         }
+      } else {
+        moving = followRoute(actor, now);
       }
-      stepWalk(actor, moving && !actor.flight, now);
+      if (moving) actor.walkMovedAt = now;
+      const walking = actor.walkMovedAt > 0 && now - actor.walkMovedAt < WALK_HOLD_MS;
+      stepWalk(actor, (moving || walking) && !actor.flight, now);
       if (actor.halo.visible) {
         const spread = 1 + wave * 0.14;
         actor.halo.scale.set(spread, spread, 1);
@@ -538,6 +644,8 @@ export class Figurines {
       landingProne: place.prone,
       landingStunned: place.stunned,
       flight: null,
+      route: null,
+      walkMovedAt: 0,
       walk: null,
     };
     pose(actor, place.prone, place.stunned);
