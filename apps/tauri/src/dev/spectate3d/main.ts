@@ -10,6 +10,7 @@ import {
   type InducementChip,
 } from '../../game/logic/coachPanelChips';
 import { blockDiceColor, blockRollAt } from './blockRoll';
+import { cameraFollow, consumeBallTravel } from './cameraTrack';
 import { numberRollAt } from './numberRoll';
 import { GroundMarkTrack } from './groundMarks';
 import { describeState } from './describeState';
@@ -310,6 +311,19 @@ let logStickToBottom = true;
 
 document.querySelector<HTMLButtonElement>('#reset-camera')?.addEventListener('click', () => {
   pitch.resetCamera();
+});
+
+function paintCameraTracking(enabled: boolean): void {
+  const button = document.querySelector<HTMLButtonElement>('#camera-track');
+  if (!button) return;
+  button.classList.toggle('hud-btn--active', enabled);
+  button.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+}
+
+paintCameraTracking(pitch.cameraTracking());
+pitch.onCameraTrackingChange(paintCameraTracking);
+document.querySelector<HTMLButtonElement>('#camera-track')?.addEventListener('click', () => {
+  pitch.setCameraTracking(!pitch.cameraTracking());
 });
 
 const logsButton = document.querySelector<HTMLButtonElement>('#logs');
@@ -736,6 +750,8 @@ async function show(): Promise<void> {
     pitch.clearBlockDice();
     pitch.clearGroundMarks();
     groundMarkTrack.reset();
+    pitch.track(null);
+    consumeBallTravel(null, true);
     shownGame = null;
     applySkillBadges(null);
     showCoaches(null);
@@ -781,6 +797,8 @@ async function show(): Promise<void> {
   showBlockDice(current.commands, index, state);
   showNumberDice(current.commands, index, state, jumped);
   showGroundMarks(current.commands, index, state, jumped);
+  const ballTraveling = consumeBallTravel(state, jumped);
+  aimCamera(current.commands, index, state, command, false, ballTraveling);
   logEl.textContent = describeState(state);
   showTurns(state);
   showScore(state);
@@ -820,6 +838,9 @@ async function show(): Promise<void> {
   });
   finalCeremonyShown = ceremony.finalShown;
   halfCeremonyShown = ceremony.halfShown;
+  if (ceremony.cards.some((card) => card.kind === 'touchdown')) {
+    aimCamera(current.commands, index, state, command, true, ballTraveling);
+  }
   for (const card of ceremony.cards) {
     if (generation !== seekGeneration) return;
     await presentCeremony(card, generation);
@@ -1204,6 +1225,21 @@ function blockDieSetting(): { surface: unknown; family: unknown } {
 
 function showGroundMarks(commands: Parameters<typeof blockRollAt>[0], at: number, game: GameJson, jumped: boolean): void {
   pitch.showGroundMarks(groundMarkTrack.at(commands, at, game, jumped));
+}
+
+function aimCamera(
+  commands: Parameters<typeof blockRollAt>[0],
+  at: number,
+  game: GameJson,
+  command: ReplayCommand | null,
+  touchdown: boolean,
+  traveling: boolean,
+): void {
+  const block = !touchdown && (
+    blockRollAt(commands, at, game) != null
+    || (game.fieldModel?.pushbackSquareArray?.length ?? 0) > 0
+  );
+  pitch.track(cameraFollow(game, command, { touchdown, block, traveling }));
 }
 
 function showNumberDice(commands: Parameters<typeof blockRollAt>[0], at: number, game: GameJson, jumped: boolean): void {

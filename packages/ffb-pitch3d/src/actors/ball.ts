@@ -132,6 +132,12 @@ export class PitchBall {
     this.group.visible = true;
   }
 
+  /** Position déjà interpolée, pour que la caméra suive le ballon et non sa case. */
+  spot(): { x: number; z: number } | null {
+    if (!this.group.visible) return null;
+    return { x: this.group.position.x, z: this.group.position.z };
+  }
+
   /**
    * Le ballon part avec le joueur lancé et vise la même arrivée, même si le modèle
    * ne déplace la balle qu'à la commande suivante.

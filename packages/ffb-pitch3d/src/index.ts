@@ -3,6 +3,7 @@ export type { BlockDiceSpec } from './actors/dice/dBlock';
 export type { NumberDiceSpec } from './actors/dice/d6';
 export type { GroundMark } from './actors/groundMarks';
 export type { CameraPreset } from './camera/presets';
+export type { CameraFollow } from './Pitch3D';
 export { squareToWorld, worldToSquare } from './coords';
 export { portraitCrop } from './actors/atlases';
 export { walkPortrait } from './actors/walkPlates';

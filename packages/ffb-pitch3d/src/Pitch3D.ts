@@ -8,13 +8,14 @@ import {
   PerspectiveCamera,
   Raycaster,
   Scene,
+  Spherical,
   SRGBColorSpace,
   Vector2,
   Vector3,
   WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { applyCameraPreset, type CameraPreset } from './camera/presets';
+import { applyCameraPreset } from './camera/presets';
 import { getDescentPolarAngle, HORIZONTAL_POLAR_RAD, TOP_DOWN_POLAR_RAD } from './camera/descent';
 import { squareToWorld } from './coords';
 import { PitchFog } from './environment/fog';
@@ -68,6 +69,20 @@ export class Pitch3D {
   private fpsStamp = 0;
   private readonly keys = new Set<string>();
   private lastCameraTick = 0;
+  private tracking = true;
+  private trackingListener: ((enabled: boolean) => void) | null = null;
+  private followSubject: CameraFollow | null = null;
+  private lastTrackTick = 0;
+  private readonly trackSpherical = new Spherical();
+  private readonly trackOffset = new Vector3();
+  private readonly onWheel = (): void => { this.releaseTracking(); };
+  private readonly onPointerMove = (event: PointerEvent): void => {
+    if (!this.tracking) return;
+    if (event.movementX === 0 && event.movementY === 0) return;
+    const left = (event.buttons & 1) !== 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+    const middle = (event.buttons & 4) !== 0;
+    if (left || middle) this.releaseTracking();
+  };
   private readonly raycaster = new Raycaster();
   private readonly pointer = new Vector2();
 
@@ -99,6 +114,7 @@ export class Pitch3D {
     this.camera = camera;
     this.renderer = renderer;
     this.controls = controls;
+    this.syncPan();
 
     this.hemi = new HemisphereLight(0xb6ddff, 0x22331f, 0.85);
     this.sun = new DirectionalLight(0xfff8f0, 1.75);
@@ -139,6 +155,7 @@ export class Pitch3D {
     this.resizeObserver.observe(host);
     this.resize();
     this.bindKeys();
+    this.bindPointer(renderer.domElement);
     this.weather = null;
     this.presentWeather('nice');
     applyCameraPreset('overview', camera, controls, this.cameraStart);
@@ -168,11 +185,35 @@ export class Pitch3D {
     if (withBall && this.figurines && this.ball) this.ball.followThrow(this.figurines, id);
   }
 
-  /** Remet la vue d'ensemble, cible au centre du terrain. */
+  /** Remet la vue d'ensemble et rend le suivi. */
   resetCamera(): void {
     if (!this.camera || !this.controls) return;
+    this.tracking = true;
+    this.syncPan();
+    this.trackingListener?.(true);
     this.controls.target.set(0, 0, 0);
     applyCameraPreset('overview', this.camera, this.controls, this.cameraStart);
+  }
+
+  cameraTracking(): boolean {
+    return this.tracking;
+  }
+
+  /** Allume ou éteint le suivi. Rallumer reprend depuis l'angle actuel. */
+  setCameraTracking(enabled: boolean): void {
+    if (this.tracking === enabled) return;
+    this.tracking = enabled;
+    this.syncPan();
+    this.trackingListener?.(enabled);
+  }
+
+  onCameraTrackingChange(listener: (enabled: boolean) => void): void {
+    this.trackingListener = listener;
+  }
+
+  /** Qui cadrer. `null` : la caméra reste où elle est. */
+  track(subject: CameraFollow | null): void {
+    this.followSubject = subject;
   }
 
   /** Affiche le jet. Le même `key` met à jour la couleur et le dé choisi sans relancer. */
@@ -243,11 +284,6 @@ export class Pitch3D {
     return null;
   }
 
-  setPreset(preset: CameraPreset): void {
-    if (!this.camera || !this.controls) return;
-    applyCameraPreset(preset, this.camera, this.controls, this.cameraStart);
-  }
-
   diagnostics(): PitchDiagnostics {
     const info = this.renderer?.info;
     return {
@@ -261,6 +297,7 @@ export class Pitch3D {
 
   destroy(): void {
     this.unbindKeys();
+    this.unbindPointer();
     cancelAnimationFrame(this.frame);
     this.frame = 0;
     this.resizeObserver?.disconnect();
@@ -335,17 +372,19 @@ export class Pitch3D {
   private animate = (now: number): void => {
     this.frame = requestAnimationFrame(this.animate);
     if (!this.renderer || !this.scene || !this.camera || !this.controls) return;
+    this.fog?.update();
+    this.ground?.update(now);
+    this.figurines?.tick(now);
+    this.ball?.tick(now, this.figurines);
+    if (this.keys.has('a') || this.keys.has('e')) this.releaseTracking();
+    this.tickTracking(now);
     const distance = this.camera.position.distanceTo(this.controls.target);
-    const phi = getDescentPolarAngle(distance, this.controls.minDistance, this.controls.maxDistance);
+    const phi = trackingPolarAngle(distance, this.tracking, this.controls.minDistance, this.controls.maxDistance);
     this.controls.minPolarAngle = Math.max(TOP_DOWN_POLAR_RAD, phi - 0.0001);
     this.controls.maxPolarAngle = Math.min(HORIZONTAL_POLAR_RAD, phi + 0.0001);
     this.tickCameraKeys(now);
     this.controls.update();
-    this.fog?.update();
-    this.ground?.update(now);
-    this.figurines?.tick(now);
     this.figurines?.face(this.camera);
-    this.ball?.tick(now, this.figurines);
     this.blockDice?.tick(now);
     this.numberDice?.tick(now);
     this.groundMarks?.tick(now);
@@ -358,6 +397,63 @@ export class Pitch3D {
     }
     this.renderer.render(this.scene, this.camera);
   };
+
+  private bindPointer(element: HTMLElement): void {
+    element.addEventListener('wheel', this.onWheel, { passive: true });
+    element.addEventListener('pointermove', this.onPointerMove);
+  }
+
+  private unbindPointer(): void {
+    const element = this.renderer?.domElement;
+    if (!element) return;
+    element.removeEventListener('wheel', this.onWheel);
+    element.removeEventListener('pointermove', this.onPointerMove);
+  }
+
+  /** Le panoramique est ignoré tant que le suivi tient la cible. */
+  private syncPan(): void {
+    if (this.controls) this.controls.enablePan = !this.tracking;
+  }
+
+  /** Tourner ou zoomer rend la main. Le panoramique, lui, ne coupe pas le suivi. */
+  private releaseTracking(): void {
+    if (!this.tracking) return;
+    this.tracking = false;
+    this.syncPan();
+    this.trackingListener?.(false);
+  }
+
+  /** Glisse la cible vers le sujet et règle la distance, sans changer l'azimut. */
+  private tickTracking(now: number): void {
+    const camera = this.camera;
+    const controls = this.controls;
+    const subject = this.followSubject;
+    if (!this.tracking || !subject || !camera || !controls) {
+      this.lastTrackTick = now;
+      return;
+    }
+    const place = subject.kind === 'player' ? this.figurines?.where(subject.id) : this.ball?.spot();
+    const dt = this.lastTrackTick ? Math.min(0.05, (now - this.lastTrackTick) / 1000) : 0;
+    this.lastTrackTick = now;
+    if (!place || dt <= 0) return;
+    const blend = 1 - Math.exp(-dt / TRACK_SECONDS);
+    const target = controls.target;
+    target.x += (place.x - target.x) * blend;
+    target.z += (place.z - target.z) * blend;
+    const clampedX = clamp(target.x, -18, 24);
+    const clampedZ = clamp(target.z, -16, 16);
+    camera.position.x += clampedX - target.x;
+    camera.position.z += clampedZ - target.z;
+    target.x = clampedX;
+    target.z = clampedZ;
+    this.trackOffset.copy(camera.position).sub(target);
+    if (this.trackOffset.lengthSq() < 1e-6) this.trackOffset.set(-16, 12, 0);
+    this.trackSpherical.setFromVector3(this.trackOffset);
+    const desired = subject.close ? CLOSE_DISTANCE : FOLLOW_DISTANCE;
+    const distance = this.trackSpherical.radius + (desired - this.trackSpherical.radius) * blend;
+    const phi = trackingPolarAngle(distance, true, controls.minDistance, controls.maxDistance);
+    camera.position.copy(target).add(this.trackOffset.setFromSphericalCoords(distance, phi, this.trackSpherical.theta));
+  }
 
   private bindKeys(): void {
     window.addEventListener('keydown', this.onKeyDown);
@@ -418,7 +514,7 @@ export class Pitch3D {
     if (this.keys.has('a')) yaw += ROTATION_SPEED * dt;
     if (this.keys.has('e')) yaw -= ROTATION_SPEED * dt;
     if (yaw !== 0) orbitYaw(camera, controls.target, yaw);
-    if (dx === 0 && dz === 0) return;
+    if (this.tracking || (dx === 0 && dz === 0)) return;
     camera.position.x += dx;
     camera.position.z += dz;
     controls.target.x += dx;
@@ -432,12 +528,35 @@ export class Pitch3D {
   }
 }
 
+/** Cadrage d'une action. `close` : bloc ou touchdown. */
+export interface CameraFollow {
+  kind: 'player' | 'ball';
+  id: string;
+  close: boolean;
+}
+
+const FOLLOW_DISTANCE = 16;
+const CLOSE_DISTANCE = 12;
+/** Le plan serré se rapproche, sans passer sous la hauteur du suivi. */
+const CLOSE_MIN_HEIGHT = 10.5;
+const TRACK_SECONDS = 0.45;
 const CAMERA_KEYS = new Set(['z', 'q', 's', 'd', 'a', 'e']);
 const PAN_SPEED = 8;
 const ROTATION_SPEED = 1.5;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * Inclinaison du suivi. Tant que la caméra n'est pas revenue à sa distance de suivi,
+ * elle garde la hauteur du plan serré : sinon la fin des dés la fait plonger d'un coup.
+ */
+function trackingPolarAngle(distance: number, holdHeight: boolean, minDistance: number, maxDistance: number): number {
+  const curve = getDescentPolarAngle(distance, minDistance, maxDistance);
+  if (!holdHeight) return curve;
+  const lifted = Math.acos(Math.min(1, CLOSE_MIN_HEIGHT / Math.max(distance, CLOSE_MIN_HEIGHT)));
+  return Math.min(curve, lifted);
 }
 
 /** Orbite autour de la cible, même sens que l'ancien OrbitControls.rotateLeft. */

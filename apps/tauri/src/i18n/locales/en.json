@@ -3362,6 +3362,7 @@
   "spectate3d.playerState.stunned": "stunned",
   "spectate3d.playerState.unknown": "unknown",
   "spectate3d.resetCamera": "Reset camera",
+  "spectate3d.cameraTracking": "Camera tracking",
   "spectate3d.skills.added": "Added skills only",
   "spectate3d.skills.both": "Skills of both teams",
   "spectate3d.skills.none": "No skills",
