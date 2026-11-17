@@ -150,14 +150,18 @@ function tileColor(count: number): number {
 }
 
 /**
- * Cases du terrain → nombre de joueurs adjacents qui exercent une zone de tacle
- * (debout, en mouvement ou en train de bloquer, ni confus ni hypnotisé).
+ * Cases du terrain → nombre de joueurs adverses adjacents qui exercent une zone
+ * de tacle (debout, en mouvement ou en train de bloquer, ni confus ni hypnotisé).
+ * L'équipe adverse est celle qui ne joue pas : les coéquipiers ne comptent pas.
  */
 export function tackleZoneCounts(game: GameJson): Map<string, number> {
   const counts = new Map<string, number>();
+  const homeIds = new Set((game.teamHome?.playerArray ?? []).map((player) => String(player.playerId)));
+  const opponentIsHome = game.homePlaying !== true;
   for (const data of game.fieldModel?.playerDataArray ?? []) {
     const state = Number(data.playerState) || 0;
     if (!exertsTackleZone(state)) continue;
+    if (homeIds.has(String(data.playerId)) !== opponentIsHome) continue;
     const coordinate = data.playerCoordinate;
     if (!coordinate) continue;
     const [px, py] = coordinate;
