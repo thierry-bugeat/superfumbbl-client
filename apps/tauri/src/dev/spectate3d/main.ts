@@ -838,9 +838,7 @@ async function show(): Promise<void> {
   });
   finalCeremonyShown = ceremony.finalShown;
   halfCeremonyShown = ceremony.halfShown;
-  if (ceremony.cards.some((card) => card.kind === 'touchdown')) {
-    aimCamera(current.commands, index, state, command, true, ballTraveling);
-  }
+  if (ceremony.cards.length > 0) pitch.glideToOverview();
   for (const card of ceremony.cards) {
     if (generation !== seekGeneration) return;
     await presentCeremony(card, generation);

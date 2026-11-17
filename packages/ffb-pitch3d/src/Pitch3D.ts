@@ -16,7 +16,7 @@ import {
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { applyCameraPreset } from './camera/presets';
-import { getDescentPolarAngle, HORIZONTAL_POLAR_RAD, TOP_DOWN_POLAR_RAD } from './camera/descent';
+import { getDescentDistance, getDescentPolarAngle, HORIZONTAL_POLAR_RAD, TOP_DOWN_POLAR_RAD } from './camera/descent';
 import { squareToWorld } from './coords';
 import { PitchFog } from './environment/fog';
 import { createPitchGround, type PitchGroundHandle } from './environment/pitchGround';
@@ -46,6 +46,7 @@ export class Pitch3D {
   private camera: PerspectiveCamera | null = null;
   private controls: OrbitControls | null = null;
   private readonly cameraStart = new Vector3(-24, 32, 0);
+  private readonly overviewAzimuth = new Spherical().setFromVector3(this.cameraStart).theta;
   private sun: DirectionalLight | null = null;
   private hemi: HemisphereLight | null = null;
   private fog: PitchFog | null = null;
@@ -72,6 +73,9 @@ export class Pitch3D {
   private tracking = true;
   private trackingListener: ((enabled: boolean) => void) | null = null;
   private followSubject: CameraFollow | null = null;
+  private glidingOverview = false;
+  private overviewSettled = false;
+  private glidePhi = 0;
   private lastTrackTick = 0;
   private readonly trackSpherical = new Spherical();
   private readonly trackOffset = new Vector3();
@@ -188,11 +192,25 @@ export class Pitch3D {
   /** Remet la vue d'ensemble et rend le suivi. */
   resetCamera(): void {
     if (!this.camera || !this.controls) return;
+    this.glidingOverview = false;
+    this.overviewSettled = false;
     this.tracking = true;
     this.syncPan();
     this.trackingListener?.(true);
     this.controls.target.set(0, 0, 0);
     applyCameraPreset('overview', this.camera, this.controls, this.cameraStart);
+  }
+
+  /** Glisse vers la même vue que le bouton de réinitialisation, et rend le suivi. */
+  glideToOverview(): void {
+    if (!this.camera || !this.controls) return;
+    this.followSubject = null;
+    this.glidingOverview = true;
+    this.overviewSettled = true;
+    if (this.tracking) return;
+    this.tracking = true;
+    this.syncPan();
+    this.trackingListener?.(true);
   }
 
   cameraTracking(): boolean {
@@ -203,6 +221,10 @@ export class Pitch3D {
   setCameraTracking(enabled: boolean): void {
     if (this.tracking === enabled) return;
     this.tracking = enabled;
+    if (!enabled) {
+      this.glidingOverview = false;
+      this.overviewSettled = false;
+    }
     this.syncPan();
     this.trackingListener?.(enabled);
   }
@@ -214,6 +236,10 @@ export class Pitch3D {
   /** Qui cadrer. `null` : la caméra reste où elle est. */
   track(subject: CameraFollow | null): void {
     this.followSubject = subject;
+    if (subject) {
+      this.glidingOverview = false;
+      this.overviewSettled = false;
+    }
   }
 
   /** Affiche le jet. Le même `key` met à jour la couleur et le dé choisi sans relancer. */
@@ -377,9 +403,11 @@ export class Pitch3D {
     this.figurines?.tick(now);
     this.ball?.tick(now, this.figurines);
     if (this.keys.has('a') || this.keys.has('e')) this.releaseTracking();
-    this.tickTracking(now);
+    if (!this.tickOverviewGlide(now)) this.tickTracking(now);
     const distance = this.camera.position.distanceTo(this.controls.target);
-    const phi = trackingPolarAngle(distance, this.tracking, this.controls.minDistance, this.controls.maxDistance);
+    const phi = this.glidingOverview
+      ? this.glidePhi
+      : trackingPolarAngle(distance, this.tracking && !this.overviewSettled, this.controls.minDistance, this.controls.maxDistance);
     this.controls.minPolarAngle = Math.max(TOP_DOWN_POLAR_RAD, phi - 0.0001);
     this.controls.maxPolarAngle = Math.min(HORIZONTAL_POLAR_RAD, phi + 0.0001);
     this.tickCameraKeys(now);
@@ -419,8 +447,57 @@ export class Pitch3D {
   private releaseTracking(): void {
     if (!this.tracking) return;
     this.tracking = false;
+    this.glidingOverview = false;
+    this.overviewSettled = false;
     this.syncPan();
     this.trackingListener?.(false);
+  }
+
+  /** Rejoint la vue d'ensemble sans sauter. Un nouveau sujet, ou la main rendue, l'interrompt. */
+  private tickOverviewGlide(now: number): boolean {
+    if (!this.glidingOverview) return false;
+    const camera = this.camera;
+    const controls = this.controls;
+    if (!this.tracking || !camera || !controls) {
+      this.glidingOverview = false;
+      this.overviewSettled = false;
+      return false;
+    }
+    this.trackOffset.copy(camera.position).sub(controls.target);
+    if (this.trackOffset.lengthSq() < 1e-6) this.trackOffset.set(-16, 12, 0);
+    this.trackSpherical.setFromVector3(this.trackOffset);
+    const dt = this.lastTrackTick ? Math.min(0.05, (now - this.lastTrackTick) / 1000) : 0;
+    this.lastTrackTick = now;
+    if (dt <= 0) {
+      this.glidePhi = this.trackSpherical.phi;
+      return true;
+    }
+    const blend = 1 - Math.exp(-dt / OVERVIEW_SECONDS);
+    const target = controls.target;
+    target.x += -target.x * blend;
+    target.y += -target.y * blend;
+    target.z += -target.z * blend;
+    const goalDistance = getDescentDistance(0.3, controls.minDistance, controls.maxDistance);
+    const goalAzimuth = this.overviewAzimuth;
+    const goalPhi = getDescentPolarAngle(goalDistance, controls.minDistance, controls.maxDistance);
+    this.trackSpherical.radius += (goalDistance - this.trackSpherical.radius) * blend;
+    this.trackSpherical.theta = lerpAngle(this.trackSpherical.theta, goalAzimuth, blend);
+    this.trackSpherical.phi += (goalPhi - this.trackSpherical.phi) * blend;
+    this.glidePhi = this.trackSpherical.phi;
+    camera.position.copy(target).add(this.trackOffset.setFromSphericalCoords(this.trackSpherical.radius, this.trackSpherical.phi, this.trackSpherical.theta));
+    const azimuthLeft = Math.atan2(Math.sin(goalAzimuth - this.trackSpherical.theta), Math.cos(goalAzimuth - this.trackSpherical.theta));
+    const arrived = target.lengthSq() < 0.0025
+      && Math.abs(this.trackSpherical.radius - goalDistance) < 0.05
+      && Math.abs(azimuthLeft) < 0.01;
+    if (arrived) {
+      target.set(0, 0, 0);
+      this.trackSpherical.radius = goalDistance;
+      this.trackSpherical.theta = goalAzimuth;
+      this.trackSpherical.phi = getDescentPolarAngle(goalDistance, controls.minDistance, controls.maxDistance);
+      camera.position.copy(target).add(this.trackOffset.setFromSphericalCoords(this.trackSpherical.radius, this.trackSpherical.phi, this.trackSpherical.theta));
+      this.glidingOverview = false;
+    }
+    return true;
   }
 
   /** Glisse la cible vers le sujet et règle la distance, sans changer l'azimut. */
@@ -535,6 +612,7 @@ export interface CameraFollow {
   close: boolean;
 }
 
+const OVERVIEW_SECONDS = 0.85;
 const FOLLOW_DISTANCE = 16;
 const CLOSE_DISTANCE = 12;
 /** Le plan serré se rapproche, sans passer sous la hauteur du suivi. */
@@ -546,6 +624,11 @@ const ROTATION_SPEED = 1.5;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function lerpAngle(from: number, to: number, t: number): number {
+  const delta = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+  return from + delta * t;
 }
 
 /**
