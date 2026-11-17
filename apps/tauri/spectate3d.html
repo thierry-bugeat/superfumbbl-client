@@ -429,6 +429,8 @@
         cursor: pointer;
       }
       #player button:hover, #player label.file:hover { border-color: #43a1ff; }
+      #player .player-transport button:disabled { opacity: 0.35; cursor: default; }
+      #player .player-transport button:disabled:hover { border-color: rgba(255, 255, 255, 0.15); }
       #player label.file { padding: 8px 10px; text-align: center; }
       #player #player-collapse { width: 28px; height: 28px; padding: 0; flex-shrink: 0; font-size: 16px; line-height: 1; }
       .player-transport { display: flex; justify-content: center; gap: 6px; }
@@ -863,9 +865,15 @@
           <button id="prev" type="button" data-i18n="spectate3d.transport.previousTurn" data-i18n-mode="title" title="Previous team turn" aria-label="Previous team turn">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14m12-14-7 7 7 7" /></svg>
           </button>
+          <button id="prev-player" type="button" data-i18n="replayLauncher.previousActivation" data-i18n-mode="title" title="Previous activation" aria-label="Previous activation" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m11 5-7 7 7 7m9-14-7 7 7 7" /></svg>
+          </button>
           <button id="play" type="button" data-i18n="spectate3d.transport.play" data-i18n-mode="title" title="Play" aria-label="Play" aria-pressed="false">
             <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true"><path class="icon-fill" d="m8 4 12 8-12 8z" /></svg>
             <svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true" hidden><path class="icon-fill" d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg>
+          </button>
+          <button id="next-player" type="button" data-i18n="replayLauncher.nextActivation" data-i18n-mode="title" title="Next activation" aria-label="Next activation" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 5 7 7-7 7m9-14 7 7-7 7" /></svg>
           </button>
           <button id="next" type="button" data-i18n="spectate3d.transport.nextTurn" data-i18n-mode="title" title="Next team turn" aria-label="Next team turn">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 5 7 7-7 7M18 5v14" /></svg>

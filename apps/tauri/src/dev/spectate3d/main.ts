@@ -19,7 +19,7 @@ import { renderChatEmoji } from '../../game/chatEmoji';
 import { t } from '../../i18n';
 import { SPECTATE3D_RETURN_MESSAGE } from '../../game/spectate3dSession';
 import { applyClientLanguage, applySpectate3dCopy } from './locale';
-import type { ReplayCommand } from '../../game/replay/replayController';
+import { activationCursors, activationSkipTarget, type ReplayCommand } from '../../game/replay/replayController';
 import { LiveSpectator } from './liveSpectator';
 import { fetchReplay, loadReplayText, ReplayTimeline } from './replayTimeline';
 import { SKILL_BADGE_MODES, skillBadgeUrls, type SkillBadgeMode } from './skillBadges';
@@ -742,6 +742,7 @@ async function show(): Promise<void> {
     finalCeremonyShown = false;
     halfCeremonyShown = false;
     paintLiveButton();
+    paintActivationButtons();
     revealStage();
     return;
   }
@@ -794,6 +795,7 @@ async function show(): Promise<void> {
     closeLiveSocket();
   }
   paintLiveButton();
+  paintActivationButtons();
   if (generation !== seekGeneration) return;
   revealStage();
   if (opening) {
@@ -894,6 +896,37 @@ async function advance(): Promise<void> {
 }
 
 playButton?.addEventListener('click', () => setPlaying(!playing));
+
+/** Début de chaque activation réellement jouée. Recalculé quand la liste des commandes change. */
+let activationSource: readonly ReplayCommand[] | null = null;
+let activationLength = -1;
+let activationBoundaries: readonly number[] = [];
+
+function boundariesNow(): readonly number[] {
+  const commands = timeline?.commands;
+  if (!commands) return [];
+  if (commands !== activationSource || commands.length !== activationLength) {
+    activationSource = commands;
+    activationLength = commands.length;
+    activationBoundaries = activationCursors(commands);
+  }
+  return activationBoundaries;
+}
+
+/** Précédent : début de l'activation en cours, ou de la précédente si on y est déjà. Suivant : la prochaine. */
+function stepActivation(direction: -1 | 1): void {
+  const target = activationSkipTarget(boundariesNow(), index, direction);
+  if (target == null) return;
+  step(target);
+}
+
+function paintActivationButtons(): void {
+  const boundaries = boundariesNow();
+  const back = document.querySelector<HTMLButtonElement>('#prev-player');
+  const forward = document.querySelector<HTMLButtonElement>('#next-player');
+  if (back) back.disabled = activationSkipTarget(boundaries, index, -1) == null;
+  if (forward) forward.disabled = activationSkipTarget(boundaries, index, 1) == null;
+}
 
 /** Suivant : début du prochain tour. Précédent : début du tour en cours, ou du précédent si on y est déjà. */
 function stepTeamTurn(direction: -1 | 1): void {
@@ -1086,6 +1119,7 @@ async function rebaseOnLiveSnapshot(game: GameJson): Promise<void> {
 function onLiveCommands(commands: readonly ReplayCommand[]): void {
   if (!timeline) return;
   timeline.appendLive(commands);
+  paintActivationButtons();
   if (followingLive) void runCatchUp();
 }
 
@@ -1103,6 +1137,8 @@ window.addEventListener('pagehide', () => { stopFollowingLive(); closeLiveSocket
 
 document.querySelector('#first')?.addEventListener('click', () => step(0));
 document.querySelector('#prev')?.addEventListener('click', () => stepTeamTurn(-1));
+document.querySelector('#prev-player')?.addEventListener('click', () => stepActivation(-1));
+document.querySelector('#next-player')?.addEventListener('click', () => stepActivation(1));
 document.querySelector('#next')?.addEventListener('click', () => stepTeamTurn(1));
 document.querySelector('#last')?.addEventListener('click', () => step((timeline?.length ?? 1) - 1));
 document.querySelector('#live')?.addEventListener('click', () => { void goToLatest(); });
