@@ -3,7 +3,7 @@ import { squareToWorld } from '@fumbbl40k/ffb-pitch3d';
 import type { NumberDiceSpec } from '@fumbbl40k/ffb-pitch3d';
 import type { ReplayCommand } from '../../game/replay/replayController';
 
-/** Rapports qui suivent la blessure sans être un nouveau jet. */
+/** Rapports qui suivent un jet sans en être un nouveau. */
 const AFTERMATH = new Set([
   'apothecaryChoice',
   'apothecaryRoll',
@@ -12,13 +12,28 @@ const AFTERMATH = new Set([
   'seriousInjury',
   'decayRoll',
   'casualtyRoll',
+  'skillUse',
+  'skillUseOtherPlayer',
+  'reRoll',
+]);
+
+/** Jets à un dé qui décident une action. Le bloc a ses propres dés. */
+const ACTION_ROLLS = new Set([
+  'dodgeRoll',
+  'goForItRoll',
+  'passRoll',
+  'catchRoll',
+  'interceptionRoll',
+  'leapRoll',
 ]);
 
 const SCAN = 40;
 
 /**
- * Le jet visible à cette position : le ramassage (un dé), ou le passage
- * d'armure puis la blessure. On remonte depuis la commande courante.
+ * Le jet visible à cette position : esquive, rush, passe, réception, interception,
+ * saut, ramassage, ou le passage d'armure puis la blessure.
+ * On remonte depuis la commande courante, et on garde le jet tant que la suite
+ * ne commence pas autre chose.
  */
 export function numberRollAt(commands: readonly ReplayCommand[], index: number, game: GameJson): NumberDiceSpec | null {
   const start = Math.max(0, index - 1);
@@ -28,11 +43,33 @@ export function numberRollAt(commands: readonly ReplayCommand[], index: number, 
     if (reports.length === 0) continue;
     const injury = reports.find((report) => report.reportId === 'injury' && (pair(report.armorRoll) || pair(report.injuryRoll)));
     if (injury) return injuryView(injury, i, game);
+    const actions = reports.filter((report) => ACTION_ROLLS.has(String(report.reportId)) && die(report.roll) !== null);
+    if (actions.length > 0) return actionView(actions, i, game);
     const pickup = [...reports].reverse().find((report) => report.reportId === 'pickUpRoll' && die(report.roll) !== null);
     if (pickup) return pickupView(pickup, i, game);
     if (reports.some((report) => !AFTERMATH.has(String(report.reportId)))) return null;
   }
   return null;
+}
+
+function actionView(reports: readonly Record<string, unknown>[], commandIndex: number, game: GameJson): NumberDiceSpec | null {
+  const rolls = reports
+    .map((report) => die(report.roll))
+    .filter((value): value is number => value !== null)
+    .map((value) => [value]);
+  if (rolls.length === 0) return null;
+  const last = reports[reports.length - 1];
+  const playerId = typeof last?.playerId === 'string' && last.playerId
+    ? last.playerId
+    : actingPlayerId(game);
+  const point = besidePlayer(game, playerId);
+  const ids = reports.map((report) => String(report.reportId)).join('+');
+  return {
+    key: `${commandIndex}:${ids}:${rolls.map((roll) => roll[0]).join('.')}:${playerId}`,
+    x: point.x,
+    z: point.z,
+    rolls,
+  };
 }
 
 function pickupView(report: Record<string, unknown>, commandIndex: number, game: GameJson): NumberDiceSpec | null {
@@ -76,6 +113,11 @@ function pair(value: unknown): [number, number] | null {
 
 function die(value: unknown): number | null {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 6 ? value : null;
+}
+
+function actingPlayerId(game: GameJson): string {
+  const playerId = game.actingPlayer?.playerId;
+  return typeof playerId === 'string' ? playerId : '';
 }
 
 /** À côté du joueur, pour laisser voir les dés de bloc posés sur sa case. */

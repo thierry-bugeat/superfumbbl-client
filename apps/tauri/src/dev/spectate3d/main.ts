@@ -11,6 +11,7 @@ import {
 } from '../../game/logic/coachPanelChips';
 import { blockDiceColor, blockRollAt } from './blockRoll';
 import { numberRollAt } from './numberRoll';
+import { GroundMarkTrack } from './groundMarks';
 import { describeState } from './describeState';
 import { mountPlayerCards } from './playerCard';
 import { CoachChat, type CoachChatLine } from './coachChat';
@@ -414,6 +415,7 @@ function lobThrownMate(command: { animation?: unknown; [key: string]: unknown } 
 
 let timeline: ReplayTimeline | null = null;
 let index = 0;
+const groundMarkTrack = new GroundMarkTrack();
 let seekGeneration = 0;
 let announcedWeather: WeatherBannerKey | null = null;
 let shownIndex = -1;
@@ -732,6 +734,8 @@ async function show(): Promise<void> {
     renderMatchLog([]);
     renderCoachChat([]);
     pitch.clearBlockDice();
+    pitch.clearGroundMarks();
+    groundMarkTrack.reset();
     shownGame = null;
     applySkillBadges(null);
     showCoaches(null);
@@ -776,6 +780,7 @@ async function show(): Promise<void> {
   playerCards.refresh(state);
   showBlockDice(current.commands, index, state);
   showNumberDice(current.commands, index, state, jumped);
+  showGroundMarks(current.commands, index, state, jumped);
   logEl.textContent = describeState(state);
   showTurns(state);
   showScore(state);
@@ -1195,6 +1200,10 @@ function blockDieSetting(): { surface: unknown; family: unknown } {
   } catch {
     return { surface: 'auto', family: 'default' };
   }
+}
+
+function showGroundMarks(commands: Parameters<typeof blockRollAt>[0], at: number, game: GameJson, jumped: boolean): void {
+  pitch.showGroundMarks(groundMarkTrack.at(commands, at, game, jumped));
 }
 
 function showNumberDice(commands: Parameters<typeof blockRollAt>[0], at: number, game: GameJson, jumped: boolean): void {

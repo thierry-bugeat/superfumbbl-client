@@ -26,6 +26,7 @@ import { TackleZones } from './actors/tackleZones';
 import { PitchBall } from './actors/ball';
 import { BlockDice, type BlockDiceSpec } from './actors/dice/dBlock';
 import { NumberDice, type NumberDiceSpec } from './actors/dice/d6';
+import { GroundMarks, type GroundMark } from './actors/groundMarks';
 import { disposeAtlases, loadAtlases } from './actors/atlases';
 import { pitchWeatherKey, WEATHER, type WeatherKey } from './weather';
 
@@ -57,6 +58,7 @@ export class Pitch3D {
   private ball: PitchBall | null = null;
   private blockDice: BlockDice | null = null;
   private numberDice: NumberDice | null = null;
+  private groundMarks: GroundMarks | null = null;
   private surfaceY = 0;
   private resizeObserver: ResizeObserver | null = null;
   private frame = 0;
@@ -130,6 +132,7 @@ export class Pitch3D {
     this.ball = new PitchBall(scene);
     this.blockDice = new BlockDice(scene);
     this.numberDice = new NumberDice(scene);
+    this.groundMarks = new GroundMarks(scene);
     await Promise.all([loadAtlases(anisotropy), this.ball.load(), this.blockDice.load(anisotropy)]);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -193,6 +196,16 @@ export class Pitch3D {
   /** `immediate` : un saut. Sinon le jet d'armure puis de blessure se termine avant de disparaître. */
   releaseNumberDice(immediate: boolean): void {
     this.numberDice?.release(immediate);
+  }
+
+  /** Cases de poussée et flèches de dispersion. La même liste ne reconstruit rien. */
+  showGroundMarks(marks: readonly GroundMark[]): void {
+    if (marks.length === 0) this.groundMarks?.clear();
+    else this.groundMarks?.show(marks);
+  }
+
+  clearGroundMarks(): void {
+    this.groundMarks?.clear();
   }
 
   /** Affiche ou masque les cases marquées, teintées selon le nombre de zones de tacle. */
@@ -272,6 +285,8 @@ export class Pitch3D {
     this.blockDice = null;
     this.numberDice?.dispose();
     this.numberDice = null;
+    this.groundMarks?.dispose();
+    this.groundMarks = null;
     disposeAtlases();
     this.fog?.dispose();
     this.fog = null;
@@ -333,6 +348,7 @@ export class Pitch3D {
     this.ball?.tick(now, this.figurines);
     this.blockDice?.tick(now);
     this.numberDice?.tick(now);
+    this.groundMarks?.tick(now);
     this.frames += 1;
     const elapsed = now - this.fpsStamp;
     if (elapsed >= 500) {
