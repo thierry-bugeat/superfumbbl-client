@@ -189,14 +189,11 @@ export class Pitch3D {
     if (withBall && this.figurines && this.ball) this.ball.followThrow(this.figurines, id);
   }
 
-  /** Remet la vue d'ensemble et rend le suivi. */
+  /** Remet la vue d'ensemble. Le suivi reste dans l'état choisi par le bouton. */
   resetCamera(): void {
     if (!this.camera || !this.controls) return;
     this.glidingOverview = false;
     this.overviewSettled = false;
-    this.tracking = true;
-    this.syncPan();
-    this.trackingListener?.(true);
     this.controls.target.set(0, 0, 0);
     applyCameraPreset('overview', this.camera, this.controls, this.cameraStart);
   }
