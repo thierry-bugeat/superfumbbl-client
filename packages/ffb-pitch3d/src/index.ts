@@ -1,4 +1,5 @@
 export { Pitch3D, type PitchDiagnostics } from './Pitch3D';
+export { noteActingSide } from './actors/actingSide';
 export { MOVE_SQUARE_MS } from './actors/figurines';
 export type { BlockDiceSpec } from './actors/dice/dBlock';
 export type { NumberDiceSpec } from './actors/dice/d6';

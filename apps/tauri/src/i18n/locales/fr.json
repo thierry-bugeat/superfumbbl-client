@@ -3417,6 +3417,8 @@
   "spectate3d.ceremony.halfTime": "Mi-temps",
   "spectate3d.ceremony.scorer": "{name} marque",
   "spectate3d.ceremony.touchdown": "Touchdown",
+  "spectate3d.turnover.aria": "Turnover de {team}",
+  "spectate3d.turnover.title": "Turnover",
   "spectate3d.chip.apothecary": "Apothicaire",
   "spectate3d.chip.cards": "Cartes",
   "spectate3d.chip.prayers": "Prières à Nuffle",

@@ -20,6 +20,7 @@ import {
   TextureLoader,
 } from 'three';
 import { edgeX, edgeZ, PITCH_COLUMNS, PITCH_ROWS, squareToWorld, TILE_SIZE } from '../coords';
+import { noteActingSide } from './actingSide';
 import { plateRect, type PlateRect } from './atlases';
 import { loadWalkStrip, walkSheetUrl, type WalkFace } from './walkPlates';
 
@@ -728,65 +729,6 @@ interface Placement {
   acted: boolean;
   distracted: boolean;
   signature: string;
-}
-
-/** Tours où une équipe active ses figurines. */
-const TEAM_TURN = new Set([
-  'regular',
-  'blitz',
-  'selectBlitzTarget',
-  'quickSnap',
-  'highKick',
-  'kickoffReturn',
-  'passBlock',
-]);
-
-/**
- * Sous-modes au milieu d'une activation (dump-off, interception, bombes…).
- * On conserve le côté pour ne pas rétablir les opacités en plein tour.
- */
-const HOLD_ACTING_SIDE = new Set([
-  'dumpOff',
-  'interception',
-  'bombHome',
-  'bombAway',
-  'bombHomeBlitz',
-  'bombAwayBlitz',
-  'selectGazeTarget',
-  'selectBlockKind',
-  'raidingParty',
-  'hitAndRun',
-  'thenIStartedBlastin',
-  'safePairOfHands',
-  'trickster',
-  'wizard',
-  'illegalSubstitution',
-]);
-
-/**
- * Le serveur laisse le bit ACTIVE sur les deux équipes. On ne le suit que pour
- * l'équipe dont c'est le tour.
- *
- * Fin de tour : le serveur oscille regular ↔ betweenTurns et fait clignoter
- * homePlaying (regular → betweenTurns → regular → betweenTurns + côté inverse
- * → regular + ancien côté → côté définitif). betweenTurns n'est pas une fin
- * de tour : on garde le côté déjà retenu, sinon les socles passent à 1 puis
- * reviennent à 0.5 à chaque aller-retour. Le rétablissement se fait une seule
- * fois, quand un vrai mode de tour adopte le nouveau homePlaying, ou quand
- * plus personne n'active (setup, kickoff, fin de match).
- */
-function noteActingSide(game: GameJson, previous: boolean | null, previousGameId: number | null): { side: boolean | null; gameId: number } {
-  const gameId = Number(game.gameId) || 0;
-  if (gameId !== previousGameId) previous = null;
-  const finished = game.finished != null && String(game.finished) !== '';
-  const mode = String(game.turnMode ?? '');
-  if (finished || mode === 'endGame') return { side: null, gameId };
-  if (mode === 'betweenTurns' || HOLD_ACTING_SIDE.has(mode)) return { side: previous, gameId };
-  if (TEAM_TURN.has(mode)) {
-    if (game.homePlaying !== true && game.homePlaying !== false) return { side: previous, gameId };
-    return { side: game.homePlaying, gameId };
-  }
-  return { side: null, gameId };
 }
 
 function placements(game: GameJson, surfaceY: number, actingSide: boolean | null): Placement[] {

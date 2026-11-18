@@ -1,5 +1,5 @@
 import { d6FaceUrl, isD6FaceValue } from '@fumbbl40k/ffb-pitch/src/d6';
-import { MOVE_SQUARE_MS, Pitch3D, type PitchDiagnostics } from '@fumbbl40k/ffb-pitch3d';
+import { MOVE_SQUARE_MS, Pitch3D, noteActingSide, type PitchDiagnostics } from '@fumbbl40k/ffb-pitch3d';
 import type { GameJson, TeamJson, TurnDataJson } from '@fumbbl40k/ffb-protocol';
 import { terms } from '../../i18n/terms';
 import { crestDataUrl } from '../../game/teamCrests';
@@ -23,7 +23,7 @@ import { SPECTATE3D_RETURN_MESSAGE } from '../../game/spectate3dSession';
 import { applyClientLanguage, applySpectate3dCopy } from './locale';
 import { activationCursors, activationSkipTarget, type ReplayCommand } from '../../game/replay/replayController';
 import { LiveSpectator } from './liveSpectator';
-import { fetchReplay, loadReplayText, ReplayTimeline } from './replayTimeline';
+import { fetchReplay, loadReplayText, ReplayTimeline, type TurnoverBannerCue } from './replayTimeline';
 import { SKILL_BADGE_MODES, skillBadgeUrls, type SkillBadgeMode } from './skillBadges';
 import { ceremoniesForStep, type CeremonyCard, type CeremonySide } from './ceremony';
 import { MATCHUP_DWELL_MS, matchupView, tvThousands, type MatchupSideView } from './matchup';
@@ -285,6 +285,9 @@ document.querySelector<HTMLButtonElement>('#skills')?.addEventListener('click', 
 
 const playerCards = mountPlayerCards();
 let shownGame: GameJson | null = null;
+/** Côté dont c'est le tour, retenu pendant la bascule betweenTurns. */
+let actingSide: boolean | null = null;
+let actingGameId: number | null = null;
 /** Dernière commande affichée. Sert à la pendule hors direct, quand elle porte `turnTime`. */
 let shownCommand: ReplayCommand | null = null;
 /** Millisecondes déjà passées, dernier `serverGameTime`. Le direct seul s'en sert. */
@@ -434,6 +437,7 @@ let seekGeneration = 0;
 let announcedWeather: WeatherBannerKey | null = null;
 let shownIndex = -1;
 let bannerRelease: (() => void) | null = null;
+let turnoverRelease: (() => void) | null = null;
 let matchupRelease: (() => void) | null = null;
 /** Vrai pour le premier affichage d'un replay ou d'un direct : la carte domicile / extérieur précède le jeu. */
 let openingMatchup = false;
@@ -445,6 +449,14 @@ function dismissWeatherBanner(): void {
   bannerRelease = null;
   release?.();
   const root = document.querySelector<HTMLElement>('#weather-banner');
+  if (root) root.hidden = true;
+}
+
+function dismissTurnoverBanner(): void {
+  const release = turnoverRelease;
+  turnoverRelease = null;
+  release?.();
+  const root = document.querySelector<HTMLElement>('#turnover-banner');
   if (root) root.hidden = true;
 }
 
@@ -733,9 +745,69 @@ function holdWeatherBanner(banner: WeatherBanner, generation: number): Promise<v
   });
 }
 
+const TURNOVER_DWELL_MS = 2400;
+
+/** Bandeau de l'équipe qui vient de perdre son tour. Clic, Échap ou Entrée passent. */
+function presentTurnoverBanner(cue: TurnoverBannerCue, generation: number): Promise<void> {
+  const root = document.querySelector<HTMLElement>('#turnover-banner');
+  const title = document.querySelector<HTMLElement>('#turnover-banner-title');
+  const team = document.querySelector<HTMLElement>('#turnover-banner-team');
+  const crest = document.querySelector<HTMLImageElement>('#turnover-banner-crest');
+  if (!root || !title || !team || !crest || generation !== seekGeneration) return Promise.resolve();
+  const name = cue.coach || cue.teamName;
+  const heading = t('spectate3d.turnover.title');
+  title.textContent = heading;
+  team.textContent = name;
+  team.hidden = !name;
+  root.dataset.side = cue.side;
+  root.setAttribute('aria-label', name ? t('spectate3d.turnover.aria', { team: name }) : heading);
+  const url = crestDataUrl(cue.race, cue.side);
+  crest.hidden = !url;
+  crest.alt = '';
+  if (url) {
+    crest.onerror = () => { crest.hidden = true; };
+    crest.src = url;
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer = 0;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      root.removeEventListener('click', finish);
+      window.removeEventListener('keydown', onKey);
+      if (turnoverRelease === finish) {
+        turnoverRelease = null;
+        root.hidden = true;
+      }
+      resolve();
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' && event.key !== 'Enter') return;
+      event.preventDefault();
+      finish();
+    };
+    turnoverRelease = finish;
+    if (generation !== seekGeneration) {
+      finish();
+      return;
+    }
+    timer = window.setTimeout(finish, TURNOVER_DWELL_MS);
+    root.hidden = false;
+    root.classList.remove('is-in');
+    void root.offsetWidth;
+    root.classList.add('is-in');
+    root.addEventListener('click', finish);
+    window.addEventListener('keydown', onKey);
+  });
+}
+
 async function show(): Promise<void> {
   const generation = ++seekGeneration;
   dismissWeatherBanner();
+  dismissTurnoverBanner();
   dismissMatchup();
   const opening = openingMatchup;
   openingMatchup = false;
@@ -827,6 +899,11 @@ async function show(): Promise<void> {
   }
   await presentWeatherBanners(weatherStep.banners, generation);
   if (generation !== seekGeneration || !timeline) return;
+  const turnover = current.takeTurnoverBanner();
+  if (turnover) {
+    await presentTurnoverBanner(turnover, generation);
+    if (generation !== seekGeneration || !timeline) return;
+  }
   const ceremony = ceremoniesForStep({
     game: state,
     command: command,
@@ -1300,6 +1377,19 @@ async function seekFirstLineup(): Promise<void> {
 
 const TURNS_PER_HALF = 8;
 
+/** `null` : personne n'active (préparation, coup d'envoi, fin). betweenTurns ne change pas le côté. */
+function playingSide(game: GameJson | null): boolean | null {
+  if (!game) {
+    actingSide = null;
+    actingGameId = null;
+    return null;
+  }
+  const noted = noteActingSide(game, actingSide, actingGameId);
+  actingSide = noted.side;
+  actingGameId = noted.gameId;
+  return noted.side;
+}
+
 function showTurns(game: GameJson): void {
   const homeEdge = document.querySelector<HTMLElement>('.turn-edge--home');
   const awayEdge = document.querySelector<HTMLElement>('.turn-edge--away');
@@ -1308,9 +1398,43 @@ function showTurns(game: GameJson): void {
   if (!homeEdge || !awayEdge || !homeRail || !awayRail) return;
   homeEdge.hidden = false;
   awayEdge.hidden = false;
-  const homeActive = game.homePlaying === true;
-  fillTurnRail(homeRail, Number(game.turnDataHome?.turnNr) || 0, homeActive);
-  fillTurnRail(awayRail, Number(game.turnDataAway?.turnNr) || 0, game.homePlaying === false);
+  const side = playingSide(game);
+  fillTurnRail(homeRail, Number(game.turnDataHome?.turnNr) || 0, side === true);
+  fillTurnRail(awayRail, Number(game.turnDataAway?.turnNr) || 0, side === false);
+  placeCornerButtons();
+}
+
+const CORNER_BUTTONS = ['#camera-track', '#fullscreen', '#reset-camera'] as const;
+
+/** Les deux colonnes sont centrées. Dès que l'une d'elles atteint ses boutons, les deux piles s'écartent ensemble. */
+function placeCornerButtons(): void {
+  const left = document.querySelector<HTMLElement>('.hud-bl');
+  const home = document.querySelector<HTMLElement>('.turn-edge--home');
+  const away = document.querySelector<HTMLElement>('.turn-edge--away');
+  const right = CORNER_BUTTONS.map((id) => document.querySelector<HTMLElement>(id)).filter((button): button is HTMLElement => button != null);
+  if (!left || !home || !away || right.length === 0) return;
+  const hits = (turns: HTMLElement, top: number, bottom: number): boolean => {
+    if (turns.hidden) return false;
+    const box = turns.getBoundingClientRect();
+    return box.height > 0 && box.bottom > top - 8 && box.top < bottom;
+  };
+  const leftBox = left.getBoundingClientRect();
+  const rightBoxes = right.map((button) => button.getBoundingClientRect());
+  const overlaps = hits(home, leftBox.top, leftBox.bottom)
+    || hits(away, Math.min(...rightBoxes.map((box) => box.top)), Math.max(...rightBoxes.map((box) => box.bottom)));
+  left.classList.toggle('hud-bl--aside', overlaps);
+  for (const button of right) button.classList.toggle('hud-btn--aside', overlaps);
+}
+
+{
+  const home = document.querySelector<HTMLElement>('.turn-edge--home');
+  const away = document.querySelector<HTMLElement>('.turn-edge--away');
+  window.addEventListener('resize', placeCornerButtons);
+  if (typeof ResizeObserver !== 'undefined' && (home || away)) {
+    const observer = new ResizeObserver(placeCornerButtons);
+    if (home) observer.observe(home);
+    if (away) observer.observe(away);
+  }
 }
 
 /** `turnNr` compte les tours commencés dans la mi-temps. Le tour en cours brille. */
@@ -1318,13 +1442,21 @@ function fillTurnRail(rail: HTMLElement, started: number, active: boolean): void
   const begun = Math.max(0, Math.min(TURNS_PER_HALF, Math.floor(started)));
   const current = active && begun > 0 && begun <= TURNS_PER_HALF ? begun - 1 : -1;
   const done = active ? Math.max(0, begun - 1) : begun;
-  rail.replaceChildren();
+  if (rail.children.length !== TURNS_PER_HALF) {
+    rail.replaceChildren();
+    for (let i = 0; i < TURNS_PER_HALF; i += 1) {
+      const slot = document.createElement('div');
+      slot.className = 'turn-slot';
+      slot.textContent = String(i + 1);
+      rail.appendChild(slot);
+    }
+  }
   for (let i = 0; i < TURNS_PER_HALF; i += 1) {
-    const slot = document.createElement('div');
+    const slot = rail.children[i];
+    if (!(slot instanceof HTMLElement)) continue;
     const used = i < done || i === current;
-    slot.className = 'turn-slot' + (used ? ' turn-slot--used' : '') + (i === current ? ' turn-slot--current' : '');
-    slot.textContent = String(i + 1);
-    rail.appendChild(slot);
+    slot.classList.toggle('turn-slot--used', used);
+    slot.classList.toggle('turn-slot--current', i === current);
   }
 }
 
@@ -1365,7 +1497,8 @@ function paintTurnClock(game: GameJson | null, command: ReplayCommand | null, at
     return;
   }
   label.textContent = formatTurnRemaining(elapsed, turnLimitMs(game));
-  const home = turnSideIsHome(game);
+  const side = playingSide(game);
+  const home = side ?? turnSideIsHome(game);
   root.classList.toggle('turn-clock--home', home);
   root.classList.toggle('turn-clock--away', !home);
   root.hidden = false;
@@ -1465,9 +1598,9 @@ function fillResources(host: HTMLElement, turn: TurnDataJson | undefined): void 
 }
 
 function showCoaches(game: GameJson | null): void {
-  const home = game ? turnSideIsHome(game) : false;
-  fillCoach('home', game?.teamHome, game?.turnDataHome, home, game);
-  fillCoach('away', game?.teamAway, game?.turnDataAway, game ? !home : false, game);
+  const side = playingSide(game);
+  fillCoach('home', game?.teamHome, game?.turnDataHome, side === true, game);
+  fillCoach('away', game?.teamAway, game?.turnDataAway, side === false, game);
 }
 
 function fillCoach(
@@ -1485,7 +1618,10 @@ function fillCoach(
   if (!root || !name || !teamName || !logo || !resources) return;
   root.hidden = !game;
   resources.replaceChildren();
-  if (!game) return;
+  if (!game) {
+    root.classList.remove('coach--playing');
+    return;
+  }
   root.classList.toggle('coach--playing', playing);
   name.textContent = team?.coach || (side === 'home' ? t('hud.uiPanel.home') : t('hud.uiPanel.away'));
   teamName.textContent = team?.teamName || '';

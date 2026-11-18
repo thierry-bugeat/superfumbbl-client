@@ -3315,6 +3315,8 @@
   "spectate3d.ceremony.halfTime": "Half Time",
   "spectate3d.ceremony.scorer": "{name} scores",
   "spectate3d.ceremony.touchdown": "Touchdown",
+  "spectate3d.turnover.aria": "{team} turnover",
+  "spectate3d.turnover.title": "Turnover",
   "spectate3d.chip.apothecary": "Apothecary",
   "spectate3d.chip.cards": "Cards",
   "spectate3d.chip.prayers": "Prayers to Nuffle",

@@ -4,6 +4,20 @@ import { parseJnlpXml } from '../../game/jnlpIntake';
 import { downloadReplay, parseReplayFile, type ReplayBundle } from '../../game/replay/replayLoader';
 import { applyReplayCommand, createReplaySeed, replayCommandIsTurnEnd } from '../../game/replay/replayModel';
 import type { ReplayCommand } from '../../game/replay/replayController';
+import {
+  captureTurnPresentationBefore,
+  createTurnPresentationContext,
+  turnPresentation,
+  type TurnPresentationContext,
+} from '../../game/turnPresentation';
+
+/** L'équipe qui vient de perdre son tour. FFB n'a pas de drapeau turnover : c'est la lecture 2D. */
+export interface TurnoverBannerCue {
+  side: 'home' | 'away';
+  coach: string;
+  teamName: string;
+  race: string;
+}
 
 /** Le ticket officiel pointe toujours vers ce socket. Le port déclaré dans le fichier n'est pas utilisé pour se connecter. */
 export const FUMBBL_REPLAY_URL = 'ws://fumbbl.com:22223/command';
@@ -19,6 +33,11 @@ export class ReplayTimeline {
     this.commandList = [...commands];
     this.game = this.seed();
   }
+
+  /** Suit les échecs d'un tour à l'autre : le turnover peut n'être scellé que plusieurs commandes plus tard. */
+  private turnContext: TurnPresentationContext = createTurnPresentationContext();
+  /** Turnover de la dernière commande appliquée, jusqu'à la lecture. Un seek qui n'avance pas le conserve. */
+  private landedTurnover: TurnoverBannerCue | null = null;
 
   private seed(): GameJson {
     return this.rewind ? createReplaySeed(this.base) : structuredClone(this.base);
@@ -76,11 +95,13 @@ export class ReplayTimeline {
     if (target < this.at) {
       this.game = this.seed();
       this.at = 0;
+      this.turnContext = createTurnPresentationContext();
+      this.landedTurnover = null;
     }
     while (this.at < target) {
       const command = this.commands[this.at];
       if (!command) break;
-      if (command.netCommandId !== NetCommandId.SERVER_TALK) applyReplayCommand(this.game, command);
+      this.noteTurnover(command);
       this.at += 1;
       if (onProgress && this.at % 100 === 0) {
         onProgress(this.at, target);
@@ -89,6 +110,43 @@ export class ReplayTimeline {
     }
     return this.game;
   }
+
+  /**
+   * Le turnover de la commande sur laquelle on vient d'arriver, une seule fois.
+   * Un saut ne réaffiche pas les turnovers dépassés : seule la commande d'arrivée compte.
+   */
+  takeTurnoverBanner(): TurnoverBannerCue | null {
+    const cue = this.landedTurnover;
+    this.landedTurnover = null;
+    return cue;
+  }
+
+  private noteTurnover(command: ReplayCommand): void {
+    const before = captureTurnPresentationBefore(this.game);
+    if (command.netCommandId !== NetCommandId.SERVER_TALK) applyReplayCommand(this.game, command);
+    const cue = turnPresentation(this.turnContext, before, this.game, commandReports(command));
+    this.turnContext = cue.context;
+    const splash = cue.splash;
+    if (splash?.kind !== 'turnover') {
+      this.landedTurnover = null;
+      return;
+    }
+    const team = splash.side === 'home' ? this.game.teamHome : this.game.teamAway;
+    this.landedTurnover = {
+      side: splash.side,
+      coach: splash.coach,
+      teamName: splash.teamName,
+      race: String(team?.race ?? ''),
+    };
+  }
+}
+
+function commandReports(command: ReplayCommand): readonly Record<string, unknown>[] {
+  const list = command.reportList;
+  if (!list || typeof list !== 'object') return [];
+  const reports = (list as { reports?: unknown }).reports;
+  if (!Array.isArray(reports)) return [];
+  return reports.filter((report): report is Record<string, unknown> => !!report && typeof report === 'object' && !Array.isArray(report));
 }
 
 /** Replay FUMBBL déjà connu par son numéro de partie, sans fichier .jnlp. */

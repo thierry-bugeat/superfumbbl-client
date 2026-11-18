@@ -1,4 +1,5 @@
 import type { GameJson } from '@fumbbl40k/ffb-protocol';
+import { latchedOpponentIsHome } from './actingSide';
 import {
   CanvasTexture,
   DoubleSide,
@@ -28,6 +29,9 @@ export class TackleZones {
   private readonly tileGeometry = new PlaneGeometry(0.86, 0.86);
   private readonly labelGeometry = new PlaneGeometry(0.46, 0.46);
   private readonly textures = new Map<number, CanvasTexture>();
+  /** Même retenue que les socles : homePlaying clignote pendant betweenTurns. */
+  private actingSide: boolean | null = null;
+  private actingGameId: number | null = null;
 
   constructor(scene: Scene) {
     this.group.visible = false;
@@ -41,7 +45,10 @@ export class TackleZones {
   }
 
   sync(game: GameJson): void {
-    const counts = tackleZoneCounts(game);
+    const noted = latchedOpponentIsHome(game, this.actingSide, this.actingGameId);
+    this.actingSide = noted.side;
+    this.actingGameId = noted.gameId;
+    const counts = tackleZoneCounts(game, noted.opponentIsHome);
     const seen = new Set<string>();
     for (const [key, count] of counts) {
       seen.add(key);
@@ -152,12 +159,12 @@ function tileColor(count: number): number {
 /**
  * Cases du terrain → nombre de joueurs adverses adjacents qui exercent une zone
  * de tacle (debout, en mouvement ou en train de bloquer, ni confus ni hypnotisé).
- * L'équipe adverse est celle qui ne joue pas : les coéquipiers ne comptent pas.
+ * `opponentIsHome` est le côté retenu, pas le homePlaying brut de la commande.
+ * Les coéquipiers ne comptent pas.
  */
-export function tackleZoneCounts(game: GameJson): Map<string, number> {
+export function tackleZoneCounts(game: GameJson, opponentIsHome: boolean): Map<string, number> {
   const counts = new Map<string, number>();
   const homeIds = new Set((game.teamHome?.playerArray ?? []).map((player) => String(player.playerId)));
-  const opponentIsHome = game.homePlaying !== true;
   for (const data of game.fieldModel?.playerDataArray ?? []) {
     const state = Number(data.playerState) || 0;
     if (!exertsTackleZone(state)) continue;
