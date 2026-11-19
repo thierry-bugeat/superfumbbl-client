@@ -22,17 +22,17 @@ import {
 } from 'three';
 
 /** L'ensemble du blitz, sceau compris. Les points d'étincelle ne suivent pas l'échelle du groupe. */
-const SCALE = 0.75;
-const BOLT_W = 0.78;
-const BOLT_H = 1.08;
+const SCALE = 0.75; // Échelle globale du blitz
+const BOLT_W = 0.78; // Largeur de l'icône de l'éclair
+const BOLT_H = 1.08; // Hauteur de l'icône de l'éclair
 const GLOW_SIZE = 1.95;
 const WARM_W = 0.95;
 const WARM_H = 1.25;
 const DISCHARGE_SIZE = 1.85;
-const SHELL_COUNT = 48;
+const SHELL_COUNT = 10; // Nombre de particules qui sont et qui restent à l'intérieur du "nuage" de particules
 const SHELL_RADIUS = 0.62;
-const SPARK_COUNT = 28;
-const EMBER_COUNT = 12;
+const SPARK_COUNT = 40; // Nombre de particules "basiques" qui sont projetées vers l'extérieur du "nuage".
+const EMBER_COUNT = 7; // Nombre de particules "lumineuses" qui sont projetées vers l'extérieur du "nuage".
 const ARC_COUNT = 5;
 const ARC_POINTS = 8;
 const FADE_MS = 160;
@@ -48,11 +48,7 @@ const BOLT: readonly (readonly [number, number])[] = [
   [0.845, 0.109],
   [0.603, 0.394],
   [0.832, 0.403],
-  [0.477, 0.667],
-  [0.417, 0.739],
   [0.136, 0.879],
-  [0.203, 0.734],
-  [0.144, 0.677],
   [0.406, 0.585],
   [0.136, 0.553],
   [0.414, 0.21],
