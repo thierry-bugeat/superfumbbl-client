@@ -880,7 +880,7 @@ function pawnRadius(strength: number): number {
 /** Centre de l'éclair : au-dessus de la tête, et au-dessus des badges s'il y en a. */
 function auraCenterY(actor: Actor): number {
   const scale = actor.root.scale.x || 1;
-  if (actor.lying) return actor.root.position.y + (actor.pawnTop + 0.22) * scale + 0.72;
+  if (actor.lying) return actor.root.position.y + (actor.pawnTop + 0.22) * scale + 0.585;
   let top = actor.pawnTop + actor.plateHeight;
   if (actor.skillGroup.children.length > 0) {
     const rows = Math.ceil(actor.skillGroup.children.length / 4);
@@ -891,7 +891,7 @@ function auraCenterY(actor: Actor): number {
     const badgeLift = actor.skillGroup.children.length > 0 ? 0.36 : 0;
     top = Math.max(top, head + badgeLift + DISTRACTED_H + 0.06);
   }
-  return actor.root.position.y + top * scale + 0.78;
+  return actor.root.position.y + top * scale + 0.645;
 }
 
 /** Gris pour une figurine encore à jouer, jaune vif et halo pour celle que le coach a sélectionnée. */

@@ -21,13 +21,15 @@ import {
   Vector3,
 } from 'three';
 
+/** L'ensemble du blitz, sceau compris. Les points d'étincelle ne suivent pas l'échelle du groupe. */
+const SCALE = 0.75;
 const BOLT_W = 0.78;
 const BOLT_H = 1.08;
 const GLOW_SIZE = 1.95;
 const WARM_W = 0.95;
 const WARM_H = 1.25;
 const DISCHARGE_SIZE = 1.85;
-const SHELL_COUNT = 80;
+const SHELL_COUNT = 48;
 const SHELL_RADIUS = 0.62;
 const SPARK_COUNT = 28;
 const EMBER_COUNT = 12;
@@ -38,34 +40,40 @@ const BURST_MS = 420;
 const ICON = 512;
 const SPARK_SHEET = 256;
 
-/** Sceau : pointe en haut, barbes à gauche puis à droite, pointe en bas. */
+/**
+ * Centre du trait. Le liseré dépasse d'un demi-trait, et c'est lui qui
+ * suit l'éclair : pointe haut-droite, barbe à droite, pointe bas-gauche, barbe à gauche.
+ */
 const BOLT: readonly (readonly [number, number])[] = [
-  [0.63, 0.07],
-  [0.82, 0.26],
-  [0.55, 0.38],
-  [0.78, 0.52],
-  [0.48, 0.62],
-  [0.44, 0.93],
-  [0.26, 0.64],
-  [0.46, 0.54],
-  [0.18, 0.34],
-  [0.46, 0.24],
+  [0.845, 0.109],
+  [0.603, 0.394],
+  [0.832, 0.403],
+  [0.477, 0.667],
+  [0.417, 0.739],
+  [0.136, 0.879],
+  [0.203, 0.734],
+  [0.144, 0.677],
+  [0.406, 0.585],
+  [0.136, 0.553],
+  [0.414, 0.21],
+  [0.61, 0.182],
 ];
 
 const SPINE: readonly (readonly [number, number])[] = [
-  [0.58, 0.16],
-  [0.68, 0.3],
-  [0.54, 0.42],
-  [0.64, 0.54],
-  [0.42, 0.64],
-  [0.38, 0.82],
+  [0.68, 0.22],
+  [0.52, 0.33],
+  [0.55, 0.46],
+  [0.4, 0.55],
+  [0.43, 0.64],
+  [0.3, 0.74],
+  [0.22, 0.8],
 ];
 
 const BRANCHES: readonly (readonly (readonly [number, number])[])[] = [
-  [[0.68, 0.3], [0.76, 0.26]],
-  [[0.54, 0.42], [0.4, 0.4], [0.3, 0.36]],
-  [[0.64, 0.54], [0.72, 0.5]],
-  [[0.42, 0.64], [0.34, 0.72]],
+  [[0.55, 0.46], [0.7, 0.43]],
+  [[0.4, 0.55], [0.26, 0.53]],
+  [[0.43, 0.64], [0.38, 0.68]],
+  [[0.52, 0.33], [0.58, 0.26]],
 ];
 
 const SHELL_PALETTE: readonly (readonly [number, number, number])[] = [
@@ -170,7 +178,7 @@ export class BlitzAura {
 
     this.glowMat = this.sprite(glowTex, GLOW_SIZE, GLOW_SIZE, 6, true);
     this.warmMat = this.sprite(warmTex, WARM_W, WARM_H, 7, true);
-    const shell = this.cloud(SHELL_COUNT, disc, 0.28, 8);
+    const shell = this.cloud(SHELL_COUNT, disc, 0.28 * SCALE, 8);
     this.shellPos = shell.position;
     this.shellCol = shell.color;
     this.shellDir = shellDirs(SHELL_COUNT);
@@ -188,8 +196,8 @@ export class BlitzAura {
     this.boltMat = this.sprite(boltTex, BOLT_W, BOLT_H, 12, false, this.boltPivot);
     this.coreMat = this.sprite(coreTex, BOLT_W, BOLT_H, 13, true, this.corePivot);
 
-    const sparks = this.cloud(SPARK_COUNT, disc, 0.16, 15);
-    const embers = this.cloud(EMBER_COUNT, disc, 0.4, 14);
+    const sparks = this.cloud(SPARK_COUNT, disc, 0.16 * SCALE, 15);
+    const embers = this.cloud(EMBER_COUNT, disc, 0.4 * SCALE, 14);
     this.sparkPos = sparks.position;
     this.sparkCol = sparks.color;
     this.emberPos = embers.position;
@@ -230,7 +238,7 @@ export class BlitzAura {
     if (this.dying) {
       if (this.dieStarted === 0) this.dieStarted = now;
       const fade = Math.min(1, (now - this.dieStarted) / FADE_MS);
-      this.group.scale.setScalar(Math.max(0, 1 - fade));
+      this.group.scale.setScalar(SCALE * Math.max(0, 1 - fade));
       if (fade >= 1) {
         this.group.visible = false;
         this.dying = false;
@@ -241,7 +249,7 @@ export class BlitzAura {
     } else {
       const intro = Math.min(1, (now - this.born) / 180);
       const ease = 1 - (1 - intro) ** 3;
-      this.group.scale.setScalar(0.28 + 0.72 * ease);
+      this.group.scale.setScalar(SCALE * (0.28 + 0.72 * ease));
     }
 
     this.stepMotes(this.sparks, this.sparkPos, this.sparkCol, dt);
@@ -706,7 +714,7 @@ function paintBolt(): { icon: HTMLCanvasElement; core: HTMLCanvasElement } {
   iconCtx.strokeStyle = '#fff0c4';
   iconCtx.stroke();
 
-  const fill = iconCtx.createLinearGradient(w * 0.32, h * 0.12, w * 0.68, h * 0.9);
+  const fill = iconCtx.createLinearGradient(w * 0.72, h * 0.16, w * 0.22, h * 0.84);
   fill.addColorStop(0, '#1c458f');
   fill.addColorStop(0.45, '#0c1d4c');
   fill.addColorStop(1, '#070f28');
@@ -716,7 +724,7 @@ function paintBolt(): { icon: HTMLCanvasElement; core: HTMLCanvasElement } {
   iconCtx.save();
   boltPath(iconCtx, w, h);
   iconCtx.clip();
-  const hot = iconCtx.createRadialGradient(w * 0.52, h * 0.42, 8, w * 0.52, h * 0.46, w * 0.28);
+  const hot = iconCtx.createRadialGradient(w * 0.48, h * 0.44, 8, w * 0.46, h * 0.5, w * 0.3);
   hot.addColorStop(0, 'rgba(255,255,245,0.72)');
   hot.addColorStop(0.38, 'rgba(255,214,110,0.28)');
   hot.addColorStop(1, 'rgba(255,190,60,0)');
@@ -728,10 +736,10 @@ function paintBolt(): { icon: HTMLCanvasElement; core: HTMLCanvasElement } {
   drawCracks(iconCtx, w, h, 18);
   iconCtx.restore();
 
-  glint(iconCtx, w * 0.84, h * 0.2, 5);
-  glint(iconCtx, w * 0.16, h * 0.36, 4);
-  glint(iconCtx, w * 0.86, h * 0.55, 3.5);
-  glint(iconCtx, w * 0.28, h * 0.74, 4);
+  glint(iconCtx, w * 0.86, h * 0.1, 5);
+  glint(iconCtx, w * 0.84, h * 0.4, 4);
+  glint(iconCtx, w * 0.14, h * 0.55, 3.5);
+  glint(iconCtx, w * 0.14, h * 0.88, 4);
 
   coreCtx.lineJoin = 'round';
   coreCtx.lineCap = 'round';
