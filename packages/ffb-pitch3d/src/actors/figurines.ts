@@ -22,6 +22,7 @@ import {
 import { edgeX, edgeZ, PITCH_COLUMNS, PITCH_ROWS, squareToWorld, TILE_SIZE } from '../coords';
 import { noteActingSide } from './actingSide';
 import { plateRect, type PlateRect } from './atlases';
+import { actingBlitzId, BlitzAura } from './blitzAura';
 import { loadWalkStrip, walkSheetUrl, type WalkFace } from './walkPlates';
 
 const DISTRACTED_URL = new URL('../../assets/textures/distracted.png', import.meta.url).href;
@@ -262,6 +263,9 @@ export class Figurines {
   private readonly iconTextures = new Map<string, Texture>();
   private readonly iconLoader = new TextureLoader();
   private readonly badges = new Map<string, readonly string[]>();
+  private readonly blitz: BlitzAura;
+  /** Joueur dont l'action en cours contient « blitz ». Vide : pas d'éclair. */
+  private blitzId = '';
   private lastTick = 0;
 
   constructor(scene: Scene) {
@@ -284,12 +288,14 @@ export class Figurines {
       toneMapped: false,
     });
     scene.add(this.group);
+    this.blitz = new BlitzAura(scene);
   }
 
   sync(game: GameJson, surfaceY: number): void {
     const noted = noteActingSide(game, this.actingSide, this.actingGameId);
     this.actingSide = noted.side;
     this.actingGameId = noted.gameId;
+    this.blitzId = actingBlitzId(game);
     const placed = placements(game, surfaceY, this.actingSide);
     const seen = new Set<string>();
     for (const place of placed) {
@@ -407,6 +413,7 @@ export class Figurines {
       const scale = actor.root.scale.x + (actor.targetScale - actor.root.scale.x) * Math.min(1, dt * 8);
       actor.root.scale.setScalar(scale);
     }
+    this.syncBlitz(now, dt);
   }
 
   /** Racines des figurines, pour le survol à la souris. */
@@ -467,6 +474,7 @@ export class Figurines {
       skills.rotation.y = yaw;
       skills.position.y = actor.pawnTop + actor.plateHeight + 0.05;
     }
+    this.blitz.orient(camera);
   }
 
   /** Icônes au-dessus de la tête. `urls` vide retire la rangée. */
@@ -529,7 +537,20 @@ export class Figurines {
     }
   }
 
+  /** Éclair au-dessus du blitzeur. Il suit la position déjà interpolée. */
+  private syncBlitz(now: number, dt: number): void {
+    const actor = this.blitzId ? this.actors.get(this.blitzId) : undefined;
+    if (actor && this.blitzId) {
+      this.blitz.follow(this.blitzId, now);
+      this.blitz.place(actor.root.position.x, auraCenterY(actor), actor.root.position.z);
+    } else {
+      this.blitz.hide();
+    }
+    this.blitz.tick(now, dt);
+  }
+
   dispose(): void {
+    this.blitz.dispose();
     for (const actor of this.actors.values()) disposeActor(actor);
     this.actors.clear();
     this.pawnGeometry.dispose();
@@ -854,6 +875,23 @@ function pawnRadius(strength: number): number {
   if (strength === 5) return 0.46;
   if (strength >= 6) return 0.48;
   return 0.4;
+}
+
+/** Centre de l'éclair : au-dessus de la tête, et au-dessus des badges s'il y en a. */
+function auraCenterY(actor: Actor): number {
+  const scale = actor.root.scale.x || 1;
+  if (actor.lying) return actor.root.position.y + (actor.pawnTop + 0.22) * scale + 0.72;
+  let top = actor.pawnTop + actor.plateHeight;
+  if (actor.skillGroup.children.length > 0) {
+    const rows = Math.ceil(actor.skillGroup.children.length / 4);
+    top += 0.05 + rows * 0.28;
+  }
+  if (actor.distracted.visible) {
+    const head = actor.pawnTop + actor.plateHeight;
+    const badgeLift = actor.skillGroup.children.length > 0 ? 0.36 : 0;
+    top = Math.max(top, head + badgeLift + DISTRACTED_H + 0.06);
+  }
+  return actor.root.position.y + top * scale + 0.78;
 }
 
 /** Gris pour une figurine encore à jouer, jaune vif et halo pour celle que le coach a sélectionnée. */
