@@ -212,8 +212,8 @@
       .hud-bl--aside { left: calc(12px + 34px + 8px); }
       .hud-bl .hud-btn { position: static; }
       .hud-btn--reset { right: 12px; }
-      .hud-btn--fullscreen { right: 12px; bottom: 84px; z-index: 21; }
-      .hud-btn--track { right: 12px; bottom: 126px; z-index: 21; }
+      .hud-btn--fullscreen { right: 12px; bottom: 126px; z-index: 21; }
+      .hud-btn--track { right: 12px; bottom: 84px; z-index: 21; }
       .hud-btn--aside { right: calc(12px + 34px + 8px); }
       .turn-clock {
         position: absolute; right: 0; bottom: 0; z-index: 21;
@@ -872,13 +872,13 @@
         </svg>
         <span class="turn-clock-time">0:00</span>
       </div>
-      <button id="camera-track" class="hud-btn hud-btn--track hud-btn--active" type="button" aria-pressed="true" data-i18n="spectate3d.cameraTracking" data-i18n-mode="title" title="Camera tracking">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8 4H5.5A1.5 1.5 0 0 0 4 5.5V8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M16 20h2.5a1.5 1.5 0 0 0 1.5-1.5V16"/><circle cx="12" cy="12" r="2.1" fill="currentColor"/></svg>
-        <span data-i18n="spectate3d.cameraTracking">Camera tracking</span>
-      </button>
       <button id="fullscreen" class="hud-btn hud-btn--fullscreen" type="button" title="Full Screen">
         <img id="fullscreen-icon" alt="" />
         <span data-i18n="spectate3d.fullscreen.enter">Full Screen</span>
+      </button>
+      <button id="camera-track" class="hud-btn hud-btn--track hud-btn--active" type="button" aria-pressed="true" data-i18n="spectate3d.cameraTracking" data-i18n-mode="title" title="Camera tracking">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8 4H5.5A1.5 1.5 0 0 0 4 5.5V8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M16 20h2.5a1.5 1.5 0 0 0 1.5-1.5V16"/><circle cx="12" cy="12" r="2.1" fill="currentColor"/></svg>
+        <span data-i18n="spectate3d.cameraTracking">Camera tracking</span>
       </button>
       <button id="reset-camera" class="hud-btn hud-btn--reset" type="button" data-i18n="spectate3d.resetCamera" data-i18n-mode="title" title="Reset camera">
         <img id="reset-camera-icon" alt="" />

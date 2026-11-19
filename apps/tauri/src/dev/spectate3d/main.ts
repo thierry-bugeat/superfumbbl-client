@@ -1404,7 +1404,7 @@ function showTurns(game: GameJson): void {
   placeCornerButtons();
 }
 
-const CORNER_BUTTONS = ['#camera-track', '#fullscreen', '#reset-camera'] as const;
+const CORNER_BUTTONS = ['#fullscreen', '#camera-track', '#reset-camera'] as const;
 
 /** Les deux colonnes sont centrées. Dès que l'une d'elles atteint ses boutons, les deux piles s'écartent ensemble. */
 function placeCornerButtons(): void {

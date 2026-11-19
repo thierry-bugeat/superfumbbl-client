@@ -30,9 +30,9 @@ const SIDELINE_SETBACK = 3.2;
 const GRADIENT = {
   gradientStart: -1.0,
   gradientEnd: 2.7,
-  litColor: new Color(0x21ff08),
-  shadowColor: new Color(0x001d33),
-  highlightColor: new Color(0x8cff00),
+  litColor: new Color(0x6cbe62),
+  shadowColor: new Color(0x1c3328),
+  highlightColor: new Color(0xa6cc71),
   highlightStart: 0.5,
   highlightEnd: 1.8,
   leafShadowDarkness: 0.2,
