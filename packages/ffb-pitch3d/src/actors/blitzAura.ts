@@ -21,7 +21,7 @@ import {
   Vector3,
 } from 'three';
 
-/** L'ensemble du blitz, sceau compris. Les points d'étincelle ne suivent pas l'échelle du groupe. */
+/** L'ensemble du blitz, sceau compris. Les points n'héritent pas l'échelle du groupe : on la recopie. */
 const SCALE = 0.75; // Échelle globale du blitz
 const BOLT_W = 0.78; // Largeur de l'icône de l'éclair
 const BOLT_H = 1.08; // Hauteur de l'icône de l'éclair
@@ -36,6 +36,12 @@ const EMBER_COUNT = 7; // Nombre de particules "lumineuses" qui sont projetées 
 const ARC_COUNT = 5;
 const ARC_POINTS = 8;
 const FADE_MS = 160;
+const POP_MS = 440;
+const POP_START = 0.22;
+const POP_PEAK = 1.34;
+const SHELL_POINT = 0.28 * SCALE;
+const SPARK_POINT = 0.16 * SCALE;
+const EMBER_POINT = 0.4 * SCALE;
 const BURST_MS = 420;
 const ICON = 512;
 const SPARK_SHEET = 256;
@@ -105,6 +111,17 @@ interface Arc {
   glowAttr: BufferAttribute;
 }
 
+/** Grandit au-delà de 1, puis se dégonfle jusqu'à la taille posée. */
+function popScale(t: number): number {
+  const clamped = Math.min(1, Math.max(0, t));
+  const grow = 0.62;
+  const ease = (u: number) => u * u * (3 - 2 * u);
+  if (clamped < grow) {
+    return POP_START + (POP_PEAK - POP_START) * ease(clamped / grow);
+  }
+  return POP_PEAK + (1 - POP_PEAK) * ease((clamped - grow) / (1 - grow));
+}
+
 /**
  * Éclair au-dessus du joueur qui blitze.
  * Le sceau est or et bleu nuit. Autour : sphère de particules, étincelles
@@ -136,6 +153,9 @@ export class BlitzAura {
   private readonly dischargeCanvas: HTMLCanvasElement;
   private readonly dischargeCtx: CanvasRenderingContext2D | null;
   private readonly dischargeTex: CanvasTexture;
+  private readonly shellMat: PointsMaterial;
+  private readonly sparkMat: PointsMaterial;
+  private readonly emberMat: PointsMaterial;
   private readonly shellPos: BufferAttribute;
   private readonly shellCol: BufferAttribute;
   private readonly sparkPos: BufferAttribute;
@@ -148,6 +168,7 @@ export class BlitzAura {
   private lastBurst = 0;
   private dischargeAt = 0;
   private flash = 0;
+  private dieFrom = 1;
   private dying = false;
   private dieStarted = 0;
   private disposed = false;
@@ -174,7 +195,8 @@ export class BlitzAura {
 
     this.glowMat = this.sprite(glowTex, GLOW_SIZE, GLOW_SIZE, 6, true);
     this.warmMat = this.sprite(warmTex, WARM_W, WARM_H, 7, true);
-    const shell = this.cloud(SHELL_COUNT, disc, 0.28 * SCALE, 8);
+    const shell = this.cloud(SHELL_COUNT, disc, SHELL_POINT, 8);
+    this.shellMat = shell.material;
     this.shellPos = shell.position;
     this.shellCol = shell.color;
     this.shellDir = shellDirs(SHELL_COUNT);
@@ -192,8 +214,10 @@ export class BlitzAura {
     this.boltMat = this.sprite(boltTex, BOLT_W, BOLT_H, 12, false, this.boltPivot);
     this.coreMat = this.sprite(coreTex, BOLT_W, BOLT_H, 13, true, this.corePivot);
 
-    const sparks = this.cloud(SPARK_COUNT, disc, 0.16 * SCALE, 15);
-    const embers = this.cloud(EMBER_COUNT, disc, 0.4 * SCALE, 14);
+    const sparks = this.cloud(SPARK_COUNT, disc, SPARK_POINT, 15);
+    const embers = this.cloud(EMBER_COUNT, disc, EMBER_POINT, 14);
+    this.sparkMat = sparks.material;
+    this.emberMat = embers.material;
     this.sparkPos = sparks.position;
     this.sparkCol = sparks.color;
     this.emberPos = embers.position;
@@ -212,6 +236,7 @@ export class BlitzAura {
     this.playerId = id;
     this.dying = false;
     this.dieStarted = 0;
+    this.dieFrom = 1;
     this.group.visible = true;
     this.born = now;
     this.wake(now);
@@ -232,9 +257,12 @@ export class BlitzAura {
     if (!this.group.visible) return;
     this.lastNow = now;
     if (this.dying) {
-      if (this.dieStarted === 0) this.dieStarted = now;
+      if (this.dieStarted === 0) {
+        this.dieStarted = now;
+        this.dieFrom = this.group.scale.x / SCALE;
+      }
       const fade = Math.min(1, (now - this.dieStarted) / FADE_MS);
-      this.group.scale.setScalar(SCALE * Math.max(0, 1 - fade));
+      this.applyScale(this.dieFrom * (1 - fade));
       if (fade >= 1) {
         this.group.visible = false;
         this.dying = false;
@@ -243,9 +271,7 @@ export class BlitzAura {
         return;
       }
     } else {
-      const intro = Math.min(1, (now - this.born) / 180);
-      const ease = 1 - (1 - intro) ** 3;
-      this.group.scale.setScalar(SCALE * (0.28 + 0.72 * ease));
+      this.applyScale(popScale((now - this.born) / POP_MS));
     }
 
     this.stepMotes(this.sparks, this.sparkPos, this.sparkCol, dt);
@@ -357,7 +383,7 @@ export class BlitzAura {
     map: CanvasTexture,
     size: number,
     order: number,
-  ): { position: BufferAttribute; color: BufferAttribute } {
+  ): { position: BufferAttribute; color: BufferAttribute; material: PointsMaterial } {
     const geometry = new BufferGeometry();
     const position = new BufferAttribute(new Float32Array(count * 3), 3);
     const color = new BufferAttribute(new Float32Array(count * 4), 4);
@@ -381,7 +407,16 @@ export class BlitzAura {
     points.frustumCulled = false;
     points.raycast = () => {};
     this.group.add(points);
-    return { position, color };
+    return { position, color, material };
+  }
+
+  /** Gonfle le sceau et les points ensemble. `factor` 1 est la taille posée. */
+  private applyScale(factor: number): void {
+    const amount = Math.max(0, factor);
+    this.group.scale.setScalar(SCALE * amount);
+    this.shellMat.size = SHELL_POINT * amount;
+    this.sparkMat.size = SPARK_POINT * amount;
+    this.emberMat.size = EMBER_POINT * amount;
   }
 
   private makeArc(): Arc {
