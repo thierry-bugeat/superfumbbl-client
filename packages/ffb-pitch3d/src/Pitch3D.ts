@@ -22,6 +22,7 @@ import { PitchFog } from './environment/fog';
 import { createPitchGround, type PitchGroundHandle } from './environment/pitchGround';
 import { SkyDome } from './environment/skyDome';
 import { PitchHouse } from './environment/house';
+import { PitchTree } from './environment/tree';
 import { Figurines } from './actors/figurines';
 import { TackleZones } from './actors/tackleZones';
 import { PitchBall } from './actors/ball';
@@ -53,6 +54,7 @@ export class Pitch3D {
   private ground: PitchGroundHandle | null = null;
   private sky: SkyDome | null = null;
   private house: PitchHouse | null = null;
+  private tree: PitchTree | null = null;
   private figurines: Figurines | null = null;
   private tackleZones: TackleZones | null = null;
   private tackleZonesOn = false;
@@ -145,8 +147,9 @@ export class Pitch3D {
     scene.add(this.sky.group);
 
     this.house = new PitchHouse();
-    await this.house.load();
-    scene.add(this.house.group);
+    this.tree = new PitchTree();
+    await Promise.all([this.house.load(), this.tree.load()]);
+    scene.add(this.house.group, this.tree.group);
     this.figurines = new Figurines(scene);
     this.tackleZones = new TackleZones(scene);
     this.ball = new PitchBall(scene);
@@ -333,6 +336,8 @@ export class Pitch3D {
     this.sky = null;
     this.house?.dispose();
     this.house = null;
+    this.tree?.dispose();
+    this.tree = null;
     this.figurines?.dispose();
     this.figurines = null;
     this.tackleZones?.dispose();
@@ -397,6 +402,7 @@ export class Pitch3D {
     if (!this.renderer || !this.scene || !this.camera || !this.controls) return;
     this.fog?.update();
     this.ground?.update(now);
+    this.tree?.tick(now, this.sun);
     this.figurines?.tick(now);
     this.ball?.tick(now, this.figurines);
     if (this.keys.has('a') || this.keys.has('e')) this.releaseTracking();
