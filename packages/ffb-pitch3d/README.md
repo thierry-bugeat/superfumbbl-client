@@ -13,3 +13,4 @@ pitch.destroy();
 Le code porté depuis l'interface SpikeBowl (GPL-2.0-or-later), réécrit ici en TypeScript, est publié sous MIT
 avec l'accord de son auteur. Les décors (ciel, herbe, sol, maison) viennent de SpikeBowl et suivent la même décision.
 L'arbre fluffy (`fluffy-tree.glb` + shader canopy) est adapté de [leoawen/fluffytree-threejs](https://github.com/leoawen/fluffytree-threejs) (MIT).
+La lisière (`nature-kit.glb` : arbres, buissons, fleurs, champignons, rochers) vient du Stylized Nature MegaKit de Quaternius (CC0).

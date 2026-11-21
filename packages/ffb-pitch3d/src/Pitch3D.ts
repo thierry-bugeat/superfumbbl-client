@@ -17,12 +17,14 @@ import {
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { applyCameraPreset } from './camera/presets';
 import { getDescentDistance, getDescentPolarAngle, HORIZONTAL_POLAR_RAD, TOP_DOWN_POLAR_RAD } from './camera/descent';
-import { squareToWorld } from './coords';
+import { edgeX, squareToWorld } from './coords';
 import { PitchFog } from './environment/fog';
 import { createPitchGround, type PitchGroundHandle } from './environment/pitchGround';
 import { SkyDome } from './environment/skyDome';
 import { PitchHouse } from './environment/house';
 import { PitchTree } from './environment/tree';
+import { PitchNature } from './environment/nature';
+import { PitchBillboards } from './environment/billboards';
 import { Figurines } from './actors/figurines';
 import { TackleZones } from './actors/tackleZones';
 import { PitchBall } from './actors/ball';
@@ -49,12 +51,16 @@ export class Pitch3D {
   private readonly cameraStart = new Vector3(-24, 32, 0);
   private readonly overviewAzimuth = new Spherical().setFromVector3(this.cameraStart).theta;
   private sun: DirectionalLight | null = null;
+  /** Derrière l'en-but home : éclaire la face des pancartes, que le soleil prend à revers. */
+  private homeFill: DirectionalLight | null = null;
   private hemi: HemisphereLight | null = null;
   private fog: PitchFog | null = null;
   private ground: PitchGroundHandle | null = null;
   private sky: SkyDome | null = null;
   private house: PitchHouse | null = null;
   private tree: PitchTree | null = null;
+  private nature: PitchNature | null = null;
+  private billboards: PitchBillboards | null = null;
   private figurines: Figurines | null = null;
   private tackleZones: TackleZones | null = null;
   private tackleZonesOn = false;
@@ -134,6 +140,10 @@ export class Pitch3D {
     this.sun.shadow.camera.top = 24;
     this.sun.shadow.camera.bottom = -24;
     scene.add(this.hemi, this.sun);
+    this.homeFill = new DirectionalLight(0xfff3e0, 1.15);
+    this.homeFill.position.set(edgeX(0) - 10, 8, 0);
+    this.homeFill.target.position.set(0, 1, 0);
+    scene.add(this.homeFill, this.homeFill.target);
 
     this.fog = new PitchFog(scene, camera);
     this.fog.init();
@@ -148,8 +158,10 @@ export class Pitch3D {
 
     this.house = new PitchHouse();
     this.tree = new PitchTree();
-    await Promise.all([this.house.load(), this.tree.load()]);
-    scene.add(this.house.group, this.tree.group);
+    this.nature = new PitchNature();
+    this.billboards = new PitchBillboards();
+    await Promise.all([this.house.load(), this.tree.load(), this.nature.load(), this.billboards.load(anisotropy)]);
+    scene.add(this.house.group, this.tree.group, this.nature.group, this.billboards.group);
     this.figurines = new Figurines(scene);
     this.tackleZones = new TackleZones(scene);
     this.ball = new PitchBall(scene);
@@ -338,6 +350,10 @@ export class Pitch3D {
     this.house = null;
     this.tree?.dispose();
     this.tree = null;
+    this.nature?.dispose();
+    this.nature = null;
+    this.billboards?.dispose();
+    this.billboards = null;
     this.figurines?.dispose();
     this.figurines = null;
     this.tackleZones?.dispose();
@@ -366,6 +382,7 @@ export class Pitch3D {
     this.renderer = null;
     this.camera = null;
     this.sun = null;
+    this.homeFill = null;
     this.hemi = null;
     this.host = null;
     this.weather = null;
@@ -403,6 +420,7 @@ export class Pitch3D {
     this.fog?.update();
     this.ground?.update(now);
     this.tree?.tick(now, this.sun);
+    this.nature?.tick(now);
     this.figurines?.tick(now);
     this.ball?.tick(now, this.figurines);
     if (this.keys.has('a') || this.keys.has('e')) this.releaseTracking();
