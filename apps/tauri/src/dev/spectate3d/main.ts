@@ -19,7 +19,7 @@ import { CoachChat, type CoachChatLine } from './coachChat';
 import { MatchLog } from './matchLog';
 import { renderChatEmoji } from '../../game/chatEmoji';
 import { t } from '../../i18n';
-import { SPECTATE3D_RETURN_MESSAGE } from '../../game/spectate3dSession';
+import { SPECTATE3D_RETURN_MESSAGE, takePendingSpectate3dJnlp } from '../../game/spectate3dSession';
 import { applyClientLanguage, applySpectate3dCopy } from './locale';
 import { activationCursors, activationSkipTarget, type ReplayCommand } from '../../game/replay/replayController';
 import { LiveSpectator } from './liveSpectator';
@@ -1649,7 +1649,20 @@ const launch = new URLSearchParams(location.search);
 const launchGame = Number(launch.get('gameId'));
 const launchCoach = launch.get('coach')?.trim() ?? '';
 spectateMode = launch.get('spectate') === '1';
-if (Number.isInteger(launchGame) && launchGame > 0 && launchCoach) {
+const pendingJnlp = launch.get('jnlp') === '1' ? takePendingSpectate3dJnlp() : null;
+if (pendingJnlp) {
+  const downloading = t('spectate3d.status.downloading');
+  statusEl.textContent = downloading;
+  noteLoading(downloading);
+  try {
+    timeline = await loadReplayText(pendingJnlp);
+    await openLoadedReplay();
+  } catch (error) {
+    timeline = null;
+    statusEl.textContent = error instanceof Error ? error.message : String(error);
+    revealStage();
+  }
+} else if (Number.isInteger(launchGame) && launchGame > 0 && launchCoach) {
   watchLiveGame(launchGame, launchCoach, false);
   // En direct, le socket est la seule source : son instantané de connexion bâtit la timeline et son
   // flux l'allonge. Le replay ne sert qu'à montrer le match quand même, sans le suivre.

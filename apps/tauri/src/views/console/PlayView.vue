@@ -31,7 +31,7 @@ import { fetchRecentFumbblMatches, recentTeamCapNote, type FumbblRecentMatch, ty
 import { localPlayedTeamIds } from '../../game/recentPlayedTeams';
 import { parseActiveGames, phaseLabel, relativeTime, resultLetter, toBrowserMatch, type FumbblActiveGame, type FumbblActiveTeam } from '../../game/fumbblPlayBlade';
 import { gameStore } from '../../game/store';
-import { openSpectate3d } from '../../game/spectate3dSession';
+import { openSpectate3d, openSpectate3dJnlp } from '../../game/spectate3dSession';
 import { sharedReplayFileImporter } from '../../game/replay/replayFileImport';
 import PostGamePanel from '../../components/PostGamePanel.vue';
 import { loadPostGameSnapshot, postGameSnapshotKeys } from '../../game/postGameCache';
@@ -66,6 +66,7 @@ interface TeamPreview {
 }
 
 const fileInput = ref<HTMLInputElement | null>(null);
+const fileInput3d = ref<HTMLInputElement | null>(null);
 const inTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
 const coach = computed(() => settings.coach.trim());
 /** Resume/lobby joins run the password challenge — they need the stored password; the lists do not. */
@@ -343,6 +344,50 @@ async function openJnlpFile(event: Event): Promise<void> {
     liveSetHere(loadError, 'value', () => $t('play.text.couldNotReadThe', { p0: error instanceof Error ? error.message : String(error) }));
   }
 }
+
+/** Experimental: the same file, shown in the 3D player. A replay plays from the kickoff; a live game with an id is watched. */
+async function openJnlpFile3d(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  loadError.value = '';
+  if (!file) return;
+  try {
+    const request = await readJnlpFile(file);
+    if (request.validation === 'host-policy') {
+      liveSetHere(loadError, 'value', () => $t('jnlp.text.jnlpRejectedByHost'));
+      return;
+    }
+    if (request.validation === 'ambiguous') {
+      liveSetHere(loadError, 'value', () => $t('play.openJnlp3dAmbiguous'));
+      return;
+    }
+    if (request.validation !== 'valid' || request.mode === 'unknown') {
+      liveSetHere(loadError, 'value', () => $t('play.text.thisFileDoesNot'));
+      return;
+    }
+    if (request.fork) {
+      liveSetHere(loadError, 'value', () => $t('jnlp.text.forkFileNeedsForkServer'));
+      return;
+    }
+    const name = (request.coach || coach.value).trim();
+    if (!name) {
+      liveSetHere(loadError, 'value', () => $t('spectate3d.jnlp.noCoach'));
+      return;
+    }
+    if (!request.gameId) {
+      liveSetHere(loadError, 'value', () => $t('play.openJnlp3dNoGame'));
+      return;
+    }
+    if (request.mode === 'replay' && request.coach) {
+      openSpectate3dJnlp(request.sourceXml, settings.language, settings.blockDiceSurface, settings.blockDiceFamily);
+      return;
+    }
+    openSpectate3d(request.gameId, name, settings.language, settings.blockDiceSurface, settings.blockDiceFamily, request.mode !== 'replay');
+  } catch (error) {
+    liveSetHere(loadError, 'value', () => $t('play.text.couldNotReadThe', { p0: error instanceof Error ? error.message : String(error) }));
+  }
+}
 function launchNamed(): void { fumbblJoinByName(); }
 function launchListed(entry: GameListEntry): void {
   const opponent = opponentFor(entry);
@@ -587,6 +632,7 @@ function crestFailed(url: string | null): void {
         <header class="hm-band"><h2 id="lm-start-h">{{ $t('lmBlades.play.startAGame') }}</h2><span class="hm-cap">{{ $t('spectateBrowser.fumbbl') }}</span></header>
         <div class="lm-body">
           <button class="sf-btn primary big" type="button" @click="fileInput?.click()">{{ $t('play.openJnlp') }}</button>
+          <button v-if="settings.experimentalFeatures" class="sf-btn big jnlp-3d" type="button" data-testid="open-jnlp-3d" :title="$t('play.openJnlp3dTitle')" @click="fileInput3d?.click()">{{ $t('play.openJnlp3d') }}</button>
           <p class="lm-muted">{{ $t('lmBlades.play.openJnlpHelp') }}</p>
           <p v-if="loadError" class="sf-error" role="alert">{{ loadError }}</p>
           <button v-if="forkFeaturesEnabled()" class="sf-btn gold" type="button" data-testid="lm-play-super" @click="createGameOpen = true">
@@ -628,6 +674,7 @@ function crestFailed(url: string | null): void {
       </div>
     </div>
     <input ref="fileInput" class="file-input" type="file" accept=".jnlp,text/xml,application/xml" @change="openJnlpFile" />
+    <input ref="fileInput3d" class="file-input" type="file" accept=".jnlp,text/xml,application/xml" @change="openJnlpFile3d" />
     <CreateGameModal v-if="forkFeaturesEnabled() && createGameOpen" @close="createGameOpen = false" />
   </main>
   <main v-else class="play-view" :aria-label="$t('play.fumbblPlay')">
@@ -642,6 +689,7 @@ function crestFailed(url: string | null): void {
           <span class="test-environment-splash">{{ $t('play.testEnvironmentSplash.testEnvironment') }}</span>
         </button>
         <button class="bevel" type="button" @click="fileInput?.click()"><DisplayCaps :text="$t('play.openJnlp')" /></button>
+        <button v-if="settings.experimentalFeatures" class="bevel" type="button" data-testid="open-jnlp-3d" :title="$t('play.openJnlp3dTitle')" @click="fileInput3d?.click()"><DisplayCaps :text="$t('play.openJnlp3d')" /></button>
       </div>
     </header>
     <p v-if="loadError" class="load-error" role="alert">{{ loadError }}</p>
@@ -873,6 +921,7 @@ function crestFailed(url: string | null): void {
       </div>
     </div>
     <input ref="fileInput" class="file-input" type="file" accept=".jnlp,text/xml,application/xml" @change="openJnlpFile" />
+    <input ref="fileInput3d" class="file-input" type="file" accept=".jnlp,text/xml,application/xml" @change="openJnlpFile3d" />
     <CreateGameModal v-if="forkFeaturesEnabled() && createGameOpen" @close="createGameOpen = false" />
   </main>
 </template>
@@ -1057,6 +1106,7 @@ h2 { display: flex; align-items: center; gap: 10px; color: var(--pb-carmine); fo
 .details-foot { display: flex; justify-content: flex-end; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--pb-line); }
 
 .file-input { display: none; }
+.jnlp-3d { white-space: normal; }
 
 /* Windows under ~1500px: smaller crests and names, so the equal team panels keep room for their text. */
 @media (max-width: 1500px) {
