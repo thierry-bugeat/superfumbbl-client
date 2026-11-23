@@ -24,6 +24,11 @@ export class PitchFog {
     this.fog.density = density;
   }
 
+  /** Teinte passagère, pour l'éclair. La densité de la météo ne change pas. */
+  setColor(color: number | Color): void {
+    this.fog?.color.set(color);
+  }
+
   update(): void {
     if (!this.fog) return;
     const heightStart = 18;

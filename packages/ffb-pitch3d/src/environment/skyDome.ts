@@ -1,6 +1,7 @@
 import {
   BackSide,
   CircleGeometry,
+  Color,
   DoubleSide,
   Group,
   Mesh,
@@ -59,7 +60,7 @@ export class SkyDome {
     this.group.add(ground);
   }
 
-  setTint(color: number): void {
+  setTint(color: number | Color): void {
     this.skyMaterial?.color.set(color);
   }
 

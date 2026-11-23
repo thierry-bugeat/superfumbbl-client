@@ -443,6 +443,19 @@
       .console-tabs button { flex: 1; padding: 6px 8px; }
       .console-tabs button[aria-selected="true"] { box-shadow: inset 0 0 0 2px #f0c674; }
       #console .console-panel[hidden] { display: none !important; }
+      #console-rain { gap: 12px; user-select: none; }
+      .rain-field { display: flex; flex-direction: column; gap: 4px; cursor: pointer; }
+      .rain-field-head { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+      .rain-val { color: #8ec8ff; font-variant-numeric: tabular-nums; }
+      #console-rain input[type="range"] { width: 100%; margin: 0; accent-color: #43a1ff; cursor: pointer; }
+      .rain-check { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.35; cursor: pointer; }
+      .rain-check input { margin-top: 1px; accent-color: #43a1ff; flex: 0 0 auto; }
+      .rain-check small { display: block; margin-top: 2px; color: rgba(242, 247, 255, 0.62); }
+      .rain-split { padding-top: 8px; border-top: 1px solid rgba(117, 164, 222, 0.28); }
+      .rain-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .rain-actions .rain-check { flex: 1; min-width: 0; }
+      #rain-bolt { flex: 0 0 auto; padding: 6px 10px; }
+      #rain-impacts { margin: 0; font: 12px/1.35 ui-monospace, monospace; color: rgba(242, 247, 255, 0.72); }
       #chat { margin: 0; font: 13px/1.4 Inter, system-ui, sans-serif; }
       .chat-line { margin: 0 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
       .chat-name { font-weight: 700; }
@@ -893,6 +906,7 @@
       <nav class="console-tabs" role="tablist">
         <button id="console-tab-debug" type="button" role="tab" aria-selected="true" aria-controls="console-debug" data-i18n="spectate3d.console.debug">Debug</button>
         <button id="console-tab-chat" type="button" role="tab" aria-selected="false" aria-controls="console-chat" data-i18n="spectate3d.console.chat">Tchat</button>
+        <button id="console-tab-rain" type="button" role="tab" aria-selected="false" aria-controls="console-rain" data-i18n="spectate3d.console.rain">Rain</button>
       </nav>
       <div class="float-content console-panel" id="console-debug" role="tabpanel">
       <p id="status" data-i18n="spectate3d.status.empty">No replay loaded. The pitch is shown anyway.</p>
@@ -901,6 +915,44 @@
       </div>
       <div class="float-content console-panel" id="console-chat" role="tabpanel" hidden>
         <div id="chat"></div>
+      </div>
+      <div class="float-content console-panel" id="console-rain" role="tabpanel" hidden>
+        <label class="rain-check">
+          <input id="rain-force" type="checkbox" />
+          <span class="rain-check-copy">
+            <span data-i18n="spectate3d.console.rain.force">Force rain</span>
+            <small data-i18n="spectate3d.console.rain.forceHint">Whatever the match weather.</small>
+          </span>
+        </label>
+        <label class="rain-field">
+          <span class="rain-field-head">
+            <span data-i18n="spectate3d.console.rain.drops">Rain intensity</span>
+            <span id="rain-drops-val" class="rain-val"></span>
+          </span>
+          <input id="rain-drops" type="range" min="500" max="15000" step="500" value="6000" />
+        </label>
+        <label class="rain-field">
+          <span class="rain-field-head">
+            <span data-i18n="spectate3d.console.rain.wind">Wind strength</span>
+            <span id="rain-wind-val" class="rain-val"></span>
+          </span>
+          <input id="rain-wind" type="range" min="-15" max="25" step="1" value="6" />
+        </label>
+        <label class="rain-field">
+          <span class="rain-field-head">
+            <span data-i18n="spectate3d.console.rain.splash">Splash size</span>
+            <span id="rain-splash-val" class="rain-val"></span>
+          </span>
+          <input id="rain-splash" type="range" min="0.4" max="2.2" step="0.1" value="1" />
+        </label>
+        <div class="rain-split rain-actions">
+          <label class="rain-check">
+            <input id="rain-auto" type="checkbox" checked />
+            <span data-i18n="spectate3d.console.rain.auto">Automatic lightning</span>
+          </label>
+          <button id="rain-bolt" type="button" data-i18n="spectate3d.console.rain.bolt">Lightning</button>
+        </div>
+        <p id="rain-impacts"></p>
       </div>
     </aside>
     <aside id="player" aria-label="Player">

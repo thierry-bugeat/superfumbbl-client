@@ -25,6 +25,7 @@ import { PitchHouse } from './environment/house';
 import { PitchTree } from './environment/tree';
 import { PitchNature } from './environment/nature';
 import { PitchBillboards } from './environment/billboards';
+import { clampRainSettings, DEFAULT_RAIN_SETTINGS, PitchRain, type RainSettings } from './environment/rain';
 import { Figurines } from './actors/figurines';
 import { TackleZones } from './actors/tackleZones';
 import { PitchBall } from './actors/ball';
@@ -73,6 +74,14 @@ export class Pitch3D {
   private resizeObserver: ResizeObserver | null = null;
   private frame = 0;
   private weather: WeatherKey | null = null;
+  private rain: PitchRain | null = null;
+  private rainSettings: RainSettings = { ...DEFAULT_RAIN_SETTINGS };
+  private readonly background = new Color(WEATHER.nice.fog);
+  private readonly boltTint = new Color(0xf4f8ff);
+  private readonly flashTint = new Color();
+  private readonly flashSky = new Color();
+  private lightningActive = false;
+  private lastRainTick = 0;
   private fps = 0;
   private frames = 0;
   private fpsStamp = 0;
@@ -102,6 +111,7 @@ export class Pitch3D {
     if (this.renderer) this.destroy();
     this.host = host;
     const scene = new Scene();
+    scene.background = this.background;
     const camera = new PerspectiveCamera(45, 1, 0.1, 400);
     camera.position.copy(this.cameraStart);
     const renderer = new WebGLRenderer({ antialias: true });
@@ -175,6 +185,8 @@ export class Pitch3D {
     this.resize();
     this.bindKeys();
     this.bindPointer(renderer.domElement);
+    this.rain = new PitchRain(scene);
+    this.rain.apply(this.rainSettings);
     this.weather = null;
     this.presentWeather('nice');
     applyCameraPreset('overview', camera, controls, this.cameraStart);
@@ -299,6 +311,23 @@ export class Pitch3D {
     this.figurines?.setSkillBadges(badges);
   }
 
+  /** Réglages de la pluie. Conservés même si `init` n'a pas encore tourné. */
+  setRainSettings(patch: Partial<RainSettings>): void {
+    this.rainSettings = clampRainSettings({ ...this.rainSettings, ...patch });
+    this.rain?.apply(this.rainSettings);
+    this.syncRain();
+  }
+
+  /** Éclair immédiat, que la pluie soit affichée ou non. */
+  triggerRainLightning(): void {
+    this.rain?.triggerLightning();
+  }
+
+  /** Impacts de gouttes sur la dernière seconde pleine. */
+  rainImpacts(): number {
+    return this.rain?.impactsPerSecond() ?? 0;
+  }
+
   /** Figurine sous le pointeur, ou null. */
   pickPlayer(clientX: number, clientY: number): string | null {
     const renderer = this.renderer;
@@ -371,6 +400,10 @@ export class Pitch3D {
     disposeAtlases();
     this.fog?.dispose();
     this.fog = null;
+    this.rain?.dispose();
+    this.rain = null;
+    this.lightningActive = false;
+    this.lastRainTick = 0;
     this.scene?.clear();
     this.scene = null;
     const renderer = this.renderer;
@@ -392,7 +425,6 @@ export class Pitch3D {
     this.weather = key;
     const mood = WEATHER[key];
     this.fog?.setMood(mood.fog, mood.fogDensity);
-    if (this.scene) this.scene.background = new Color(mood.fog);
     if (this.sun) {
       this.sun.color.set(mood.sunColor);
       this.sun.intensity = mood.sunIntensity;
@@ -402,7 +434,39 @@ export class Pitch3D {
       this.hemi.intensity = mood.hemiIntensity;
     }
     this.sky?.setTint(mood.skyTint);
+    this.background.set(mood.fog);
     if (this.renderer) this.renderer.toneMappingExposure = mood.exposure;
+    this.syncRain();
+  }
+
+  /** La pluie suit la météo, sauf si la console l'a forcée. */
+  private syncRain(): void {
+    this.rain?.setVisible(this.rainSettings.force || this.weather === 'rain');
+  }
+
+  /** Éclair : le ciel, le brouillard et l'exposition s'éclairent, puis reviennent à la météo. */
+  private paintLightning(power: number): void {
+    const renderer = this.renderer;
+    const weather = this.weather;
+    if (!renderer || !weather) return;
+    const mood = WEATHER[weather];
+    if (power <= 0.01) {
+      if (!this.lightningActive) return;
+      this.lightningActive = false;
+      this.background.set(mood.fog);
+      this.fog?.setColor(mood.fog);
+      this.sky?.setTint(mood.skyTint);
+      renderer.toneMappingExposure = mood.exposure;
+      return;
+    }
+    this.lightningActive = true;
+    const lift = Math.min(1, power);
+    this.flashTint.set(mood.fog).lerp(this.boltTint, lift * 0.45);
+    this.background.copy(this.flashTint);
+    this.fog?.setColor(this.flashTint);
+    this.flashSky.set(mood.skyTint).lerp(this.boltTint, lift * 0.35);
+    this.sky?.setTint(this.flashSky);
+    renderer.toneMappingExposure = mood.exposure + lift * 0.7;
   }
 
   private resize(): void {
@@ -437,6 +501,10 @@ export class Pitch3D {
     this.blockDice?.tick(now);
     this.numberDice?.tick(now);
     this.groundMarks?.tick(now);
+    const rainDt = this.lastRainTick ? Math.min(0.05, (now - this.lastRainTick) / 1000) : 0;
+    this.lastRainTick = now;
+    const flash = rainDt > 0 ? this.rain?.tick(rainDt, this.controls.target.x, this.controls.target.z) ?? 0 : 0;
+    this.paintLightning(flash);
     this.frames += 1;
     const elapsed = now - this.fpsStamp;
     if (elapsed >= 500) {

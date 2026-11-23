@@ -7,5 +7,7 @@ export type { GroundMark } from './actors/groundMarks';
 export type { CameraPreset } from './camera/presets';
 export type { CameraFollow } from './Pitch3D';
 export { squareToWorld, worldToSquare } from './coords';
+export { clampRainSettings, DEFAULT_RAIN_SETTINGS, RAIN_RANGE } from './environment/rain';
+export type { RainSettings } from './environment/rain';
 export { portraitCrop } from './actors/atlases';
 export { walkPortrait } from './actors/walkPlates';
