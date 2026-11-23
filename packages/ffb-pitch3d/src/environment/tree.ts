@@ -18,6 +18,7 @@ import {
 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { edgeZ } from '../coords';
+import { attachCanopySnow, enableSnowCap } from './snowCap';
 
 const MODEL_URL = new URL('../../assets/environment/fluffy-tree.glb', import.meta.url).href;
 const TREE_HEIGHT = 5.5;
@@ -291,9 +292,10 @@ function createCanopyMaterial(mesh: Mesh): MeshLambertMaterial {
         'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;',
         'vec3 outgoingLight = diffuseColor.rgb;',
       );
+    attachCanopySnow(canopyShader);
   };
 
-  material.customProgramCacheKey = () => 'fluffy-canopy-v2';
+  material.customProgramCacheKey = () => 'fluffy-canopy-v5';
   return material;
 }
 
@@ -301,6 +303,7 @@ function toTrunkMaterial(source: Material | Material[]): Material | Material[] {
   if (Array.isArray(source)) return source.map((entry) => toTrunkMaterial(entry) as Material);
   if (source instanceof MeshStandardMaterial) {
     source.side = FrontSide;
+    enableSnowCap(source);
     return source;
   }
   return source;

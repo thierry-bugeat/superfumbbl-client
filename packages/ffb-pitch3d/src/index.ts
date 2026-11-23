@@ -9,5 +9,7 @@ export type { CameraFollow } from './Pitch3D';
 export { squareToWorld, worldToSquare } from './coords';
 export { clampRainSettings, DEFAULT_RAIN_SETTINGS, RAIN_RANGE } from './environment/rain';
 export type { RainSettings } from './environment/rain';
+export { clampSnowSettings, DEFAULT_SNOW_SETTINGS, SNOW_RANGE } from './environment/snow';
+export type { SnowSettings } from './environment/snow';
 export { portraitCrop } from './actors/atlases';
 export { walkPortrait } from './actors/walkPlates';

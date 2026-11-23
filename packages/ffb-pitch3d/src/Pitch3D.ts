@@ -26,6 +26,8 @@ import { PitchTree } from './environment/tree';
 import { PitchNature } from './environment/nature';
 import { PitchBillboards } from './environment/billboards';
 import { clampRainSettings, DEFAULT_RAIN_SETTINGS, PitchRain, type RainSettings } from './environment/rain';
+import { clampSnowSettings, DEFAULT_SNOW_SETTINGS, PitchSnow, type SnowSettings } from './environment/snow';
+import { setSnowCap } from './environment/snowCap';
 import { Figurines } from './actors/figurines';
 import { TackleZones } from './actors/tackleZones';
 import { PitchBall } from './actors/ball';
@@ -76,6 +78,8 @@ export class Pitch3D {
   private weather: WeatherKey | null = null;
   private rain: PitchRain | null = null;
   private rainSettings: RainSettings = { ...DEFAULT_RAIN_SETTINGS };
+  private snow: PitchSnow | null = null;
+  private snowSettings: SnowSettings = { ...DEFAULT_SNOW_SETTINGS };
   private readonly background = new Color(WEATHER.nice.fog);
   private readonly boltTint = new Color(0xf4f8ff);
   private readonly flashTint = new Color();
@@ -187,6 +191,8 @@ export class Pitch3D {
     this.bindPointer(renderer.domElement);
     this.rain = new PitchRain(scene);
     this.rain.apply(this.rainSettings);
+    this.snow = new PitchSnow(scene);
+    this.snow.apply(this.snowSettings);
     this.weather = null;
     this.presentWeather('nice');
     applyCameraPreset('overview', camera, controls, this.cameraStart);
@@ -328,6 +334,18 @@ export class Pitch3D {
     return this.rain?.impactsPerSecond() ?? 0;
   }
 
+  /** Réglages de la neige. Conservés même si `init` n'a pas encore tourné. */
+  setSnowSettings(patch: Partial<SnowSettings>): void {
+    this.snowSettings = clampSnowSettings({ ...this.snowSettings, ...patch });
+    this.snow?.apply(this.snowSettings);
+    this.syncSnow();
+  }
+
+  /** Part de la couche au sol, de 0 à 1. Elle fond encore quand les flocons sont masqués. */
+  snowCover(): number {
+    return this.snow?.cover() ?? 0;
+  }
+
   /** Figurine sous le pointeur, ou null. */
   pickPlayer(clientX: number, clientY: number): string | null {
     const renderer = this.renderer;
@@ -402,6 +420,9 @@ export class Pitch3D {
     this.fog = null;
     this.rain?.dispose();
     this.rain = null;
+    this.snow?.dispose();
+    this.snow = null;
+    setSnowCap(0);
     this.lightningActive = false;
     this.lastRainTick = 0;
     this.scene?.clear();
@@ -437,11 +458,17 @@ export class Pitch3D {
     this.background.set(mood.fog);
     if (this.renderer) this.renderer.toneMappingExposure = mood.exposure;
     this.syncRain();
+    this.syncSnow();
   }
 
   /** La pluie suit la météo, sauf si la console l'a forcée. */
   private syncRain(): void {
     this.rain?.setVisible(this.rainSettings.force || this.weather === 'rain');
+  }
+
+  /** La neige tombe par blizzard, ou si la console l'a forcée. Le sol déjà couvert fond tout seul. */
+  private syncSnow(): void {
+    this.snow?.setVisible(this.snowSettings.force || this.weather === 'blizzard');
   }
 
   /** Éclair : le ciel, le brouillard et l'exposition s'éclairent, puis reviennent à la météo. */
@@ -504,6 +531,8 @@ export class Pitch3D {
     const rainDt = this.lastRainTick ? Math.min(0.05, (now - this.lastRainTick) / 1000) : 0;
     this.lastRainTick = now;
     const flash = rainDt > 0 ? this.rain?.tick(rainDt, this.controls.target.x, this.controls.target.z) ?? 0 : 0;
+    if (rainDt > 0) this.snow?.tick(rainDt, this.camera.quaternion);
+    setSnowCap(this.snow?.cap() ?? 0);
     this.paintLightning(flash);
     this.frames += 1;
     const elapsed = now - this.fpsStamp;

@@ -29,6 +29,7 @@ import { ceremoniesForStep, type CeremonyCard, type CeremonySide } from './cerem
 import { MATCHUP_DWELL_MS, matchupView, tvThousands, type MatchupSideView } from './matchup';
 import { weatherBannersForStep, type WeatherBanner, type WeatherBannerKey } from './weatherBanner';
 import { mountRainConsole } from './rainConsole';
+import { mountSnowConsole } from './snowConsole';
 import { turnSideIsHome } from '../../game/blastinSecondBeat';
 import { formatTurnRemaining, gameClockStopped, readElapsedMs, resolveTurnElapsed, turnLimitMs } from './turnClock';
 
@@ -180,6 +181,7 @@ function mountConsole(): void {
   }
   renderCoachChat([]);
   mountRainConsole(pitch);
+  mountSnowConsole(pitch);
 }
 
 function showConsoleTab(tab: HTMLButtonElement): void {

@@ -5,6 +5,7 @@
 import { Box3, Group, Mesh, MeshStandardMaterial, Object3D, Vector3 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { edgeX, edgeZ, PITCH_COLUMNS, PITCH_ROWS } from '../coords';
+import { enableSnowCap, enableSnowFoliage } from './snowCap';
 
 const MODEL_URL = new URL('../../assets/environment/nature-kit.glb', import.meta.url).href;
 
@@ -106,6 +107,8 @@ export class PitchNature {
     for (const name of Object.keys(MODELS)) {
       const source = gltf.scene.getObjectByName(name);
       if (!source) continue;
+      const spec = MODELS[name];
+      if (!spec) continue;
       const height = new Box3().setFromObject(source).max.y;
       source.traverse((node) => {
         const mesh = node as Mesh;
@@ -114,10 +117,17 @@ export class PitchNature {
         mesh.receiveShadow = true;
         const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
         for (const material of materials) {
-          if (!(material instanceof MeshStandardMaterial) || material.userData.wind) continue;
-          if (!isFoliage(material.name)) continue;
-          enableWind(material, height);
-          this.windMaterials.push(material);
+          if (!(material instanceof MeshStandardMaterial)) continue;
+          const foliage = isFoliage(material.name);
+          if (foliage && !material.userData.wind) {
+            enableWind(material, height);
+            this.windMaterials.push(material);
+          }
+          if (spec.kind === 'rock') enableSnowCap(material);
+          else if (spec.kind === 'tree' || spec.kind === 'bush') {
+            if (foliage || isSoftPlant(material.name)) enableSnowFoliage(material);
+            else enableSnowCap(material);
+          }
         }
       });
       prototypes.set(name, source);
@@ -195,6 +205,11 @@ type WindShader = { uniforms: Record<string, { value: unknown }> };
 /** Feuilles et pétales. L'écorce, l'herbe, les champignons et les pierres restent fixes. */
 function isFoliage(name: string): boolean {
   return name.startsWith('Leaves') || name.startsWith('Flowers');
+}
+
+/** Buissons, fougères et plants dont le matériau ne s'appelle pas Leaves. */
+function isSoftPlant(name: string): boolean {
+  return /bush|fern|plant|leaf|flower/i.test(name);
 }
 
 /**
