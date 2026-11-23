@@ -25,7 +25,12 @@ export function worldToSquare(x: number, z: number, tileSize = TILE_SIZE): { x: 
   };
 }
 
-/** Bord gauche (index 0) ou droit du terrain, en monde. `boundary` 0..26. */
+/**
+ * Convertit un index (de bord) de colonne (0 à 25) en coordonnée monde X.
+ * @param boundary Index du bord de colonne (0=gauche, 25=droite)
+ * @param tileSize Taille de la tuile (1 par défaut)
+ * @returns Coordonnée x dans le monde
+ */
 export function edgeX(boundary: number, tileSize = TILE_SIZE): number {
   return (boundary - PITCH_COLUMNS / 2) * tileSize;
 }

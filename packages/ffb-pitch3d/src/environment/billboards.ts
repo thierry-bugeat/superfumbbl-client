@@ -19,9 +19,35 @@ import {
   TextureLoader,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { edgeZ, PITCH_ROWS } from '../coords';
+import { edgeX, edgeZ, PITCH_COLUMNS, PITCH_ROWS } from '../coords';
 
+/** Pitch : 26 colonnes, 15 rangées.
+ *                                        "z" = 7.5
+ *                                        ^
+ *                                        │
+ * "x" = -13 <--┌────────────+────────────┐--> "x" = 13
+ *              │            │            │
+ *              │            │            │
+ *    Caméra => │ Home     (0,0)     Away │
+ *              │            │            │
+ *              │            │            │
+ * "x" = -13 <--└────────────+────────────┘--> "x" = 13
+ *                                        │
+ *                                        v
+ *                                        "z" = -7.5
+ */
+/** Bords du terrain (26×15, TILE_SIZE=1), centrés sur l'origine. */
+const PITCH_X0 = edgeX(0);              // -13  embut home
+const PITCH_X1 = edgeX(PITCH_COLUMNS);  //  13  embut away
+const PITCH_Z0 = edgeZ(0);              // -7.5 touche home
+const PITCH_Z1 = edgeZ(PITCH_ROWS);     //  7.5 touche away
+/** Recul hors ligne pour planter une pancarte. */
 const SETBACK = 1.55;
+const SIDELINE_Z0 = PITCH_Z0 - SETBACK; // -9.05
+const SIDELINE_Z1 = PITCH_Z1 + SETBACK; //  9.05
+const ENDZONE_X0 = PITCH_X0 - SETBACK;  // -14.55
+const ENDZONE_X1 = PITCH_X1 + SETBACK;  //  14.55
+
 const POST_H = 2.05;
 const PLANK_W = 2.55;
 const PLANK_T = 0.2;
@@ -29,16 +55,26 @@ const PLANK_D = 0.05;
 const PLANK_Y = [0.42, 0.68, 0.94, 1.2];
 const POSTER_H = 1.2;
 
-const POSTERS: { url: string; x: number; side: -1 | 1; tilt: number }[] = [
-  { url: new URL('../../assets/environment/billboards/bugmans.png', import.meta.url).href, x: -12, side: -1, tilt: -0.03 },
-  { url: new URL('../../assets/environment/billboards/foulbowl.png', import.meta.url).href, x: -6.6, side: -1, tilt: 0.025 },
-  { url: new URL('../../assets/environment/billboards/goblin.png', import.meta.url).href, x: -1, side: -1, tilt: -0.02 },
-  { url: new URL('../../assets/environment/billboards/chaos.png', import.meta.url).href, x: 7.4, side: -1, tilt: 0.03 },
-  { url: new URL('../../assets/environment/billboards/skaven.png', import.meta.url).href, x: 11.6, side: -1, tilt: -0.015 },
-  { url: new URL('../../assets/environment/billboards/orcish.png', import.meta.url).href, x: -10.6, side: 1, tilt: 0.02 },
-  { url: new URL('../../assets/environment/billboards/undead.png', import.meta.url).href, x: -4.4, side: 1, tilt: -0.028 },
-  { url: new URL('../../assets/environment/billboards/dwarf.png', import.meta.url).href, x: 1.6, side: 1, tilt: 0.018 },
-  { url: new URL('../../assets/environment/billboards/nurgle.png', import.meta.url).href, x: 8, side: 1, tilt: -0.022 },
+// rotationY : angle de rotation autour de l'axe vertical
+//       0.0    (XX°) : La pancarte est dans la longueur de la touche face au terrain.
+//       -0.785 (45°) :
+//       -1.571 (90°) : La pancarte est face à la caméra, face à l'embut "Home"
+//       -3.142 (180°):
+//       -4.712 (270°):
+//       Rotation vers la droite si positif, vers la gauche si négatif
+// tilt : angle de rotation autour de l'axe horizontal
+// x, z : position monde — SIDELINE_Z0/Z1 (touches), ENDZONE_X0/X1 (embuts)
+// url : url de l'image
+const POSTERS: { url: string; x: number; z: number; tilt: number; rotationY: number }[] = [
+  { url: new URL('../../assets/environment/billboards/bugmans.png', import.meta.url).href, x: -12, z: SIDELINE_Z0, tilt: -0.03, rotationY: -0.1 },
+  { url: new URL('../../assets/environment/billboards/foulbowl.png', import.meta.url).href, x: -6.6, z: SIDELINE_Z0, tilt: 0.025, rotationY: -0.78 },
+  { url: new URL('../../assets/environment/billboards/goblin.png', import.meta.url).href, x: -1, z: SIDELINE_Z0, tilt: -0.02, rotationY: -0.78 },
+  { url: new URL('../../assets/environment/billboards/chaos.png', import.meta.url).href, x: 7.4, z: SIDELINE_Z0, tilt: 0.03, rotationY: -0.78 },
+  { url: new URL('../../assets/environment/billboards/skaven.png', import.meta.url).href, x: 11.6, z: SIDELINE_Z0, tilt: -0.015, rotationY: -0.78 },
+  { url: new URL('../../assets/environment/billboards/orcish.png', import.meta.url).href, x: -10.6, z: SIDELINE_Z1, tilt: 0.02, rotationY: Math.PI + 0.78 },
+  { url: new URL('../../assets/environment/billboards/undead.png', import.meta.url).href, x: -4.4, z: SIDELINE_Z1, tilt: -0.028, rotationY: Math.PI + 0.78 },
+  { url: new URL('../../assets/environment/billboards/dwarf.png', import.meta.url).href, x: 1.6, z: SIDELINE_Z1, tilt: 0.018, rotationY: Math.PI + 0.78 },
+  { url: new URL('../../assets/environment/billboards/nurgle.png', import.meta.url).href, x: 8, z: SIDELINE_Z1, tilt: -0.022, rotationY: Math.PI + 0.78 },
 ];
 
 /** Affiches de touche, face au terrain. */
@@ -95,9 +131,8 @@ export class PitchBillboards {
       this.geometries.push(sheet.geometry);
       board.add(planks, pegs, sheet);
 
-      const z = poster.side < 0 ? edgeZ(0) - SETBACK : edgeZ(PITCH_ROWS) + SETBACK;
-      board.position.set(poster.x, 0, z);
-      board.rotation.y = poster.side < 0 ? -0.78 : Math.PI + 0.78;
+      board.position.set(poster.x, 0, poster.z);
+      board.rotation.y = poster.rotationY;
       board.rotation.z = poster.tilt;
       board.rotation.x = -0.05;
       this.group.add(board);
