@@ -69,10 +69,12 @@ function revealStage(): void {
 }
 
 const pitch = new Pitch3D();
-mountConsole();
+let paintedChat: readonly CoachChatLine[] | null = null;
+let paintedChatCount = 0;
 const playerPanel = document.querySelector<HTMLElement>('#player');
 if (playerPanel) mountFloating(playerPanel, document.querySelector<HTMLButtonElement>('#player-collapse'), t('spectate3d.player.name'));
 try {
+  mountConsole();
   await pitch.init(stageEl);
 } catch (error) {
   statusEl.textContent = error instanceof Error ? error.message : String(error);
@@ -200,40 +202,53 @@ function showConsoleTab(tab: HTMLButtonElement): void {
   }
 }
 
+function appendChatLine(host: HTMLElement, line: CoachChatLine): void {
+  const row = document.createElement('p');
+  row.className = 'chat-line';
+  row.dataset.side = line.side;
+  const name = document.createElement('span');
+  name.className = 'chat-name';
+  name.textContent = line.coach;
+  row.append(name, document.createTextNode(': '));
+  for (const part of renderChatEmoji(line.text)) {
+    if (part.emoji) {
+      const emoji = document.createElement('span');
+      emoji.className = 'chat-emoji';
+      emoji.textContent = part.t;
+      emoji.title = part.code;
+      row.appendChild(emoji);
+    } else {
+      row.appendChild(document.createTextNode(part.t));
+    }
+  }
+  host.appendChild(row);
+}
+
 function renderCoachChat(lines: readonly CoachChatLine[]): void {
   const host = document.querySelector<HTMLElement>('#chat');
   const scroller = host?.parentElement ?? null;
   if (!host) return;
   const stick = !scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 24;
-  host.replaceChildren();
+  const extend = paintedChat === lines && lines.length >= paintedChatCount && paintedChatCount > 0;
+  if (!extend) {
+    host.replaceChildren();
+    paintedChatCount = 0;
+  }
   if (lines.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'chat-empty';
     empty.textContent = t('spectate3d.console.chatEmpty');
     host.appendChild(empty);
+    paintedChat = lines;
+    paintedChatCount = 0;
     return;
   }
-  for (const line of lines) {
-    const row = document.createElement('p');
-    row.className = 'chat-line';
-    row.dataset.side = line.side;
-    const name = document.createElement('span');
-    name.className = 'chat-name';
-    name.textContent = line.coach;
-    row.append(name, document.createTextNode(': '));
-    for (const part of renderChatEmoji(line.text)) {
-      if (part.emoji) {
-        const emoji = document.createElement('span');
-        emoji.className = 'chat-emoji';
-        emoji.textContent = part.t;
-        emoji.title = part.code;
-        row.appendChild(emoji);
-      } else {
-        row.appendChild(document.createTextNode(part.t));
-      }
-    }
-    host.appendChild(row);
+  for (let i = paintedChatCount; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (line) appendChatLine(host, line);
   }
+  paintedChat = lines;
+  paintedChatCount = lines.length;
   if (stick && scroller) scroller.scrollTop = scroller.scrollHeight;
 }
 
@@ -341,6 +356,7 @@ logsButton?.addEventListener('click', () => {
   logBar.hidden = !visible;
   logsButton.classList.toggle('hud-btn--active', visible);
   logsButton.setAttribute('aria-pressed', visible ? 'true' : 'false');
+  if (visible) renderMatchLog();
 });
 
 const logInner = document.querySelector<HTMLElement>('#logbar-inner');
@@ -377,30 +393,79 @@ function setLogExpanded(next: boolean): void {
 }
 
 let shownLog: readonly string[] = [];
+/** Journal déjà posé dans le DOM. `null` tant que la barre est masquée. */
+let paintedLog: readonly string[] | null = null;
+let paintedLogCount = 0;
+let paintedLogFull = false;
 
-/** Une seule file, de gauche à droite, calée sur le bord droit. « // » sépare les rapports. */
+/** Assez de texte pour remplir la barre repliée, sans mesurer tout le match. */
+const LOG_TAIL_CHARS = 480;
+
+function appendLogEntry(parent: HTMLElement, text: string, separated: boolean): void {
+  if (separated) {
+    const sep = document.createElement('span');
+    sep.className = 'log-sep';
+    sep.textContent = '//';
+    sep.setAttribute('aria-hidden', 'true');
+    parent.appendChild(sep);
+  }
+  const entry = document.createElement('span');
+  entry.className = 'log-entry';
+  entry.textContent = text;
+  parent.appendChild(entry);
+}
+
+function logTail(): string[] {
+  const tail: string[] = [];
+  let chars = 0;
+  for (let i = shownLog.length - 1; i >= 0 && chars < LOG_TAIL_CHARS; i -= 1) {
+    const text = shownLog[i]?.trim() ?? '';
+    if (!text) continue;
+    tail.push(text);
+    chars += text.length + 4;
+  }
+  tail.reverse();
+  return tail;
+}
+
+/**
+ * Une seule file, de gauche à droite, calée sur le bord droit. « // » sépare les rapports.
+ * Replié, seule la fin est dans le DOM : mesurer toute la file à chaque commande
+ * saccadait de plus en plus longtemps à mesure que le match avançait.
+ */
 function renderMatchLog(lines?: readonly string[]): void {
   if (lines) shownLog = lines;
   if (!matchLogEl) return;
-  const fragment = document.createDocumentFragment();
-  let first = true;
-  for (const line of shownLog) {
-    const text = line.trim();
-    if (!text) continue;
-    if (!first) {
-      const sep = document.createElement('span');
-      sep.className = 'log-sep';
-      sep.textContent = '//';
-      sep.setAttribute('aria-hidden', 'true');
-      fragment.appendChild(sep);
-    }
-    first = false;
-    const entry = document.createElement('span');
-    entry.className = 'log-entry';
-    entry.textContent = text;
-    fragment.appendChild(entry);
+  if (logBar?.hidden) {
+    paintedLog = null;
+    return;
   }
-  matchLogEl.replaceChildren(fragment);
+  const extend = logExpanded && paintedLogFull && paintedLog === shownLog && shownLog.length >= paintedLogCount;
+  if (extend) {
+    let separated = matchLogEl.childElementCount > 0;
+    for (let i = paintedLogCount; i < shownLog.length; i += 1) {
+      const text = shownLog[i]?.trim() ?? '';
+      if (!text) continue;
+      appendLogEntry(matchLogEl, text, separated);
+      separated = true;
+    }
+  } else if (!logExpanded) {
+    const tail = logTail();
+    matchLogEl.replaceChildren();
+    tail.forEach((text, index) => appendLogEntry(matchLogEl, text, index > 0));
+  } else {
+    matchLogEl.replaceChildren();
+    let separated = false;
+    for (const line of shownLog) {
+      const text = line.trim();
+      if (!text) continue;
+      appendLogEntry(matchLogEl, text, separated);
+      separated = true;
+    }
+  }
+  paintedLog = shownLog;
+  paintedLogCount = shownLog.length;
+  paintedLogFull = logExpanded;
   if (!logExpanded) {
     matchLogEl.scrollLeft = matchLogEl.scrollWidth;
     return;
