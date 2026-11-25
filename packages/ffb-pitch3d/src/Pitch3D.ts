@@ -33,6 +33,7 @@ import { Figurines } from './actors/figurines';
 import { TackleZones } from './actors/tackleZones';
 import { PitchBall } from './actors/ball';
 import { PitchBomb } from './actors/bomb';
+import { SpectatorBombs } from './actors/spectatorBombs';
 import { PitchExplosion } from './actors/explosion';
 import { BlockDice, type BlockDiceSpec } from './actors/dice/dBlock';
 import { NumberDice, type NumberDiceSpec } from './actors/dice/d6';
@@ -73,6 +74,9 @@ export class Pitch3D {
   private lineup: GameJson | null = null;
   private ball: PitchBall | null = null;
   private bomb: PitchBomb | null = null;
+  private spectators: SpectatorBombs | null = null;
+  private spectatorCount = 0;
+  private spectatorNames: string[] = [];
   private explosion: PitchExplosion | null = null;
   private blockDice: BlockDice | null = null;
   private numberDice: NumberDice | null = null;
@@ -186,6 +190,8 @@ export class Pitch3D {
     this.tackleZones = new TackleZones(scene);
     this.ball = new PitchBall(scene);
     this.bomb = new PitchBomb(scene);
+    this.spectators = new SpectatorBombs(scene);
+    this.spectators.sync(this.spectatorCount, this.spectatorNames);
     this.explosion = new PitchExplosion(scene);
     this.blockDice = new BlockDice(scene);
     this.numberDice = new NumberDice(scene);
@@ -338,6 +344,24 @@ export class Pitch3D {
     this.groundMarks?.clear();
   }
 
+  /**
+   * Une figurine bombe par spectateur, derrière l'en-but away.
+   * Un nombre remet le compte. Un objet met à jour le compte, les noms, ou les deux.
+   */
+  setSpectators(count: number): void;
+  setSpectators(roster: { count?: number; names?: readonly string[] }): void;
+  setSpectators(roster: number | { count?: number; names?: readonly string[] }): void {
+    if (typeof roster === 'number') {
+      this.spectatorCount = Math.max(0, Math.floor(roster));
+      if (this.spectatorCount === 0) this.spectatorNames = [];
+    } else {
+      if (roster.names) this.spectatorNames = roster.names.map((name) => String(name).trim());
+      if (typeof roster.count === 'number') this.spectatorCount = Math.max(0, Math.floor(roster.count));
+      else if (roster.names) this.spectatorCount = this.spectatorNames.length;
+    }
+    this.spectators?.sync(this.spectatorCount, this.spectatorNames);
+  }
+
   /** Affiche ou masque les cases marquées, teintées selon le nombre de zones de tacle. */
   setTackleZones(enabled: boolean): void {
     this.tackleZonesOn = enabled;
@@ -382,15 +406,8 @@ export class Pitch3D {
 
   /** Figurine sous le pointeur, ou null. */
   pickPlayer(clientX: number, clientY: number): string | null {
-    const renderer = this.renderer;
-    const camera = this.camera;
     const roots = this.figurines?.roots() ?? [];
-    if (!renderer || !camera || roots.length === 0) return null;
-    const rect = renderer.domElement.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-    this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-    this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
-    this.raycaster.setFromCamera(this.pointer, camera);
+    if (!this.aim(clientX, clientY) || roots.length === 0) return null;
     const hits = this.raycaster.intersectObjects(roots, true);
     for (const hit of hits) {
       let node: { parent: typeof hit.object.parent; userData: { playerId?: unknown } } | null = hit.object;
@@ -402,6 +419,48 @@ export class Pitch3D {
     }
     return null;
   }
+
+  private aim(clientX: number, clientY: number): boolean {
+    const renderer = this.renderer;
+    const camera = this.camera;
+    if (!renderer || !camera) return false;
+    const rect = renderer.domElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return false;
+    this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointer, camera);
+    return true;
+  }
+
+  /** Spectateur sous le pointeur, ou null s'il n'a pas de nom. */
+  private pickSpectator(clientX: number, clientY: number): number | null {
+    const roots = this.spectators?.targets() ?? [];
+    if (!this.aim(clientX, clientY) || roots.length === 0) return null;
+    const hits = this.raycaster.intersectObjects(roots, true);
+    for (const hit of hits) {
+      let node: { parent: typeof hit.object.parent; userData: { spectatorIndex?: unknown; spectatorName?: unknown } } | null = hit.object;
+      while (node) {
+        const index = node.userData.spectatorIndex;
+        const name = node.userData.spectatorName;
+        if (typeof index === 'number' && typeof name === 'string' && name) return index;
+        node = node.parent;
+      }
+    }
+    return null;
+  }
+
+  private hoverSpectators = (event: PointerEvent): void => {
+    const index = this.pickSpectator(event.clientX, event.clientY);
+    this.spectators?.hover(index);
+    const element = this.renderer?.domElement;
+    if (element) element.style.cursor = index == null ? '' : 'pointer';
+  };
+
+  private clearSpectatorHover = (): void => {
+    this.spectators?.hover(null);
+    const element = this.renderer?.domElement;
+    if (element) element.style.cursor = '';
+  };
 
   diagnostics(): PitchDiagnostics {
     const info = this.renderer?.info;
@@ -445,6 +504,8 @@ export class Pitch3D {
     this.ball = null;
     this.bomb?.dispose();
     this.bomb = null;
+    this.spectators?.dispose();
+    this.spectators = null;
     this.explosion?.dispose();
     this.explosion = null;
     this.blockDice?.dispose();
@@ -557,6 +618,7 @@ export class Pitch3D {
     this.figurines?.tick(now);
     this.ball?.tick(now, this.figurines);
     this.bomb?.tick(now, this.figurines);
+    this.spectators?.tick(now);
     this.explosion?.tick(now);
     if (this.keys.has('a') || this.keys.has('e')) this.releaseTracking();
     if (!this.tickOverviewGlide(now)) this.tickTracking(now);
@@ -595,6 +657,8 @@ export class Pitch3D {
   private bindPointer(element: HTMLElement): void {
     element.addEventListener('wheel', this.onWheel, { passive: true });
     element.addEventListener('pointermove', this.onPointerMove);
+    element.addEventListener('pointermove', this.hoverSpectators);
+    element.addEventListener('pointerleave', this.clearSpectatorHover);
   }
 
   private unbindPointer(): void {
@@ -602,6 +666,8 @@ export class Pitch3D {
     if (!element) return;
     element.removeEventListener('wheel', this.onWheel);
     element.removeEventListener('pointermove', this.onPointerMove);
+    element.removeEventListener('pointermove', this.hoverSpectators);
+    element.removeEventListener('pointerleave', this.clearSpectatorHover);
   }
 
   /** Le panoramique est ignoré tant que le suivi tient la cible. */

@@ -32,8 +32,27 @@ export interface LiveSpectatorHandlers {
    * Ce n'est pas une commande de modèle, la timeline ne la rejoue pas.
    */
   onClock(sample: { gameTime: number; turnTime: number }): void;
+  /**
+   * Spectateurs en train de suivre le match. Le serveur les renvoie sur
+   * `serverJoin` et `serverLeave`. Un champ absent ne change pas l'autre.
+   */
+  onSpectators(roster: { count?: number; names?: readonly string[] }): void;
   /** Le socket est tombé. `permanent` : il ne reviendra pas, l'appelant doit couper le direct. */
   onDown(permanent: boolean): void;
+}
+
+/**
+ * Spectateurs branchés sur ce match. Absent sur le reste du flux : on ne touche
+ * pas à la rangée déjà affichée. Un champ manquant laisse l'autre en place.
+ */
+function spectatorRoster(command: ServerCommand): { count?: number; names?: string[] } | null {
+  if (command.netCommandId !== NetCommandId.SERVER_JOIN && command.netCommandId !== NetCommandId.SERVER_LEAVE) return null;
+  const roster: { count?: number; names?: string[] } = {};
+  const count = command.spectators;
+  if (typeof count === 'number' && Number.isFinite(count)) roster.count = Math.max(0, Math.floor(count));
+  if (Array.isArray(command.spectatorNames)) roster.names = command.spectatorNames.map((name) => String(name ?? '').trim());
+  if (roster.count == null && !roster.names) return null;
+  return roster;
 }
 
 /** Ce qu'une timeline sait rejouer. Le reste du flux (pong, join, statut) ne l'intéresse pas. */
@@ -106,6 +125,8 @@ export class LiveSpectator {
     });
     session.on('command', (command) => {
       if (this.session !== session) return;
+      const watchers = spectatorRoster(command);
+      if (watchers) this.handlers.onSpectators(watchers);
       if (command.netCommandId === NetCommandId.SERVER_GAME_TIME) {
         const gameTime = Number(command.gameTime);
         const turnTime = Number(command.turnTime);

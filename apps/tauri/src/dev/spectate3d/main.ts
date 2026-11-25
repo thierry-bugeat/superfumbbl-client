@@ -1257,6 +1257,7 @@ function openLiveSocket(gameId: number, search: URLSearchParams): Promise<boolea
       liveElapsed = sample.turnTime;
       if (followingLive && shownGame) paintTurnClock(shownGame, shownCommand, index === 0);
     },
+    onSpectators: (roster) => { pitch.setSpectators(roster); },
     onDown: (permanent) => {
       if (!permanent || !liveSocket) return;
       // Le socket ne reviendra pas : on coupe le direct au lieu de laisser croire qu'il suit.
@@ -1265,7 +1266,10 @@ function openLiveSocket(gameId: number, search: URLSearchParams): Promise<boolea
       closeLiveSocket();
       paintLiveButton();
       // Mort avant le premier instantané : il n'y a rien à l'écran, le replay prend le relais.
-      if (!liveRunning) void showDownloadedReplay();
+      if (!liveRunning) {
+        pitch.setSpectators(0);
+        void showDownloadedReplay();
+      }
     },
   });
   liveSocket = socket;
