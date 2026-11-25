@@ -3413,6 +3413,7 @@
   "spectate3d.status.computing": "calculating {done} / {target}…",
   "spectate3d.status.downloading": "Downloading the replay from FUMBBL…",
   "spectate3d.status.empty": "No replay loaded. The pitch is shown anyway.",
+  "spectate3d.status.match": "match ID {id}",
   "spectate3d.status.reading": "Reading the replay…",
   "spectate3d.status.seeking": "Looking for the first lineup… {index} / {total}",
   "spectate3d.status.start": "kickoff — 0 / {total}",

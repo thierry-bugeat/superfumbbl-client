@@ -38,14 +38,29 @@ applyClientLanguage();
 applySpectate3dCopy();
 
 const stage = document.querySelector<HTMLElement>('#stage');
+const matchId = document.querySelector<HTMLElement>('#match-id');
 const status = document.querySelector<HTMLElement>('#status');
 const diag = document.querySelector<HTMLElement>('#diag');
 const log = document.querySelector<HTMLElement>('#log');
-if (!stage || !status || !diag || !log) throw new Error('page incomplète');
+if (!stage || !matchId || !status || !diag || !log) throw new Error('page incomplète');
 const stageEl: HTMLElement = stage;
+const matchIdEl: HTMLElement = matchId;
 const statusEl: HTMLElement = status;
 const diagEl: HTMLElement = diag;
 const logEl: HTMLElement = log;
+
+/** `gameId` du modèle : entier positif sur tout replay et sur l'instantané du direct. */
+function paintMatchId(game: GameJson | null): void {
+  const id = Number(game?.gameId);
+  if (!Number.isInteger(id) || id <= 0) {
+    matchIdEl.hidden = true;
+    matchIdEl.textContent = '';
+    return;
+  }
+  matchIdEl.hidden = false;
+  matchIdEl.textContent = t('spectate3d.status.match', { id });
+}
+
 const boot = document.querySelector<HTMLElement>('#boot');
 const bootLabel = document.querySelector<HTMLElement>('#boot-label');
 
@@ -889,6 +904,7 @@ async function show(): Promise<void> {
   const opening = openingMatchup;
   openingMatchup = false;
   if (!timeline) {
+    paintMatchId(null);
     statusEl.textContent = t('spectate3d.status.empty');
     logEl.textContent = '';
     matchLog.reset();
@@ -935,6 +951,7 @@ async function show(): Promise<void> {
     announcedKey: announcedWeather,
   });
   announcedWeather = weatherStep.announcedKey;
+  paintMatchId(state);
   statusEl.textContent = command
     ? t('spectate3d.status.command', { index, total: current.commands.length, id: command.netCommandId })
     : t('spectate3d.status.start', { total: current.commands.length });
@@ -1013,6 +1030,7 @@ document.querySelector<HTMLInputElement>('#file')?.addEventListener('change', as
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
   const jnlp = file.name.endsWith('.jnlp') || file.type.includes('jnlp');
+  paintMatchId(null);
   statusEl.textContent = jnlp ? t('spectate3d.status.downloading') : t('spectate3d.status.reading');
   logEl.textContent = '';
   setPlaying(false);
@@ -1021,6 +1039,7 @@ document.querySelector<HTMLInputElement>('#file')?.addEventListener('change', as
     await openLoadedReplay();
   } catch (error) {
     timeline = null;
+    paintMatchId(null);
     statusEl.textContent = error instanceof Error ? error.message : String(error);
     logEl.textContent = '';
   }
@@ -1266,6 +1285,7 @@ function openLiveSocket(gameId: number, search: URLSearchParams): Promise<boolea
 async function showDownloadedReplay(): Promise<void> {
   if (liveRunning || !liveGameId || !liveCoach) return;
   const downloading = t('spectate3d.status.downloading');
+  paintMatchId(null);
   statusEl.textContent = downloading;
   noteLoading(downloading);
   try {
@@ -1276,6 +1296,7 @@ async function showDownloadedReplay(): Promise<void> {
     await show();
   } catch (error) {
     timeline = null;
+    paintMatchId(null);
     statusEl.textContent = error instanceof Error ? error.message : String(error);
     revealStage();
   }
@@ -1730,6 +1751,7 @@ spectateMode = launch.get('spectate') === '1';
 const pendingJnlp = launch.get('jnlp') === '1' ? takePendingSpectate3dJnlp() : null;
 if (pendingJnlp) {
   const downloading = t('spectate3d.status.downloading');
+  paintMatchId(null);
   statusEl.textContent = downloading;
   noteLoading(downloading);
   try {
@@ -1737,6 +1759,7 @@ if (pendingJnlp) {
     await openLoadedReplay();
   } catch (error) {
     timeline = null;
+    paintMatchId(null);
     statusEl.textContent = error instanceof Error ? error.message : String(error);
     revealStage();
   }

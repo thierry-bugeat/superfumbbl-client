@@ -468,6 +468,7 @@
       .chat-empty { margin: 0; color: rgba(242, 247, 255, 0.62); }
       .row { display: flex; flex-wrap: wrap; gap: 6px; }
       #log { margin: 0; white-space: pre-wrap; font: 12px/1.35 ui-monospace, monospace; }
+      #match-id { margin: 0; color: #8ec8ff; font-variant-numeric: tabular-nums; }
       #status { margin: 0; color: #f0c674; }
       #diag { margin: 0; }
       #player {
@@ -912,6 +913,7 @@
         <button id="console-tab-snow" type="button" role="tab" aria-selected="false" aria-controls="console-snow" data-i18n="spectate3d.console.snow">Snow</button>
       </nav>
       <div class="float-content console-panel" id="console-debug" role="tabpanel">
+      <p id="match-id" hidden></p>
       <p id="status" data-i18n="spectate3d.status.empty">No replay loaded. The pitch is shown anyway.</p>
       <p id="diag"></p>
       <pre id="log"></pre>

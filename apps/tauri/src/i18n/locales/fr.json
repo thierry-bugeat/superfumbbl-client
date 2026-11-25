@@ -3515,6 +3515,7 @@
   "spectate3d.status.computing": "calcul {done} / {target}…",
   "spectate3d.status.downloading": "Téléchargement du replay depuis FUMBBL…",
   "spectate3d.status.empty": "Aucun replay chargé. Le terrain s’affiche quand même.",
+  "spectate3d.status.match": "ID du match {id}",
   "spectate3d.status.reading": "Lecture du replay…",
   "spectate3d.status.seeking": "Recherche du premier alignement… {index} / {total}",
   "spectate3d.status.start": "départ — 0 / {total}",
