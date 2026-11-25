@@ -31,6 +31,7 @@ import { setSnowCap } from './environment/snowCap';
 import { Figurines } from './actors/figurines';
 import { TackleZones } from './actors/tackleZones';
 import { PitchBall } from './actors/ball';
+import { PitchBomb } from './actors/bomb';
 import { BlockDice, type BlockDiceSpec } from './actors/dice/dBlock';
 import { NumberDice, type NumberDiceSpec } from './actors/dice/d6';
 import { GroundMarks, type GroundMark } from './actors/groundMarks';
@@ -69,6 +70,7 @@ export class Pitch3D {
   private tackleZonesOn = false;
   private lineup: GameJson | null = null;
   private ball: PitchBall | null = null;
+  private bomb: PitchBomb | null = null;
   private blockDice: BlockDice | null = null;
   private numberDice: NumberDice | null = null;
   private groundMarks: GroundMarks | null = null;
@@ -179,10 +181,11 @@ export class Pitch3D {
     this.figurines = new Figurines(scene);
     this.tackleZones = new TackleZones(scene);
     this.ball = new PitchBall(scene);
+    this.bomb = new PitchBomb(scene);
     this.blockDice = new BlockDice(scene);
     this.numberDice = new NumberDice(scene);
     this.groundMarks = new GroundMarks(scene);
-    await Promise.all([loadAtlases(anisotropy), this.ball.load(), this.blockDice.load(anisotropy)]);
+    await Promise.all([loadAtlases(anisotropy), this.ball.load(), this.bomb.load(), this.blockDice.load(anisotropy)]);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(host);
@@ -201,7 +204,7 @@ export class Pitch3D {
     this.frame = requestAnimationFrame(this.animate);
   }
 
-  /** Météo, figurines et ballon. Un état sans joueurs (bouton météo) ne retire personne. `cut` : un saut. */
+  /** Météo, figurines, ballon et bombe. Un état sans joueurs (bouton météo) ne retire personne. `cut` : un saut. */
   present(game: GameJson, cut = false): void {
     const key = pitchWeatherKey(game.fieldModel?.weather);
     if (key !== this.weather) this.presentWeather(key);
@@ -212,6 +215,9 @@ export class Pitch3D {
     }
     if (game.fieldModel?.playerDataArray || (game.fieldModel && 'ballCoordinate' in game.fieldModel)) {
       this.ball?.sync(game, cut);
+    }
+    if (game.fieldModel?.playerDataArray || (game.fieldModel && 'bombCoordinate' in game.fieldModel)) {
+      this.bomb?.sync(game, cut);
     }
   }
 
@@ -227,6 +233,13 @@ export class Pitch3D {
     const from = squareToWorld(fromX, fromY);
     const to = squareToWorld(toX, toY);
     this.ball?.throwTo(to.x, to.z, from.x, from.z);
+  }
+
+  /** Bombe : la parabole part tout de suite, avant que le modèle ne la pose. */
+  throwBomb(fromX: number, fromY: number, toX: number, toY: number): void {
+    const from = squareToWorld(fromX, fromY);
+    const to = squareToWorld(toX, toY);
+    this.bomb?.throwTo(to.x, to.z, from.x, from.z);
   }
 
   /** Remet la vue d'ensemble. Le suivi reste dans l'état choisi par le bouton. */
@@ -416,6 +429,8 @@ export class Pitch3D {
     this.lineup = null;
     this.ball?.dispose();
     this.ball = null;
+    this.bomb?.dispose();
+    this.bomb = null;
     this.blockDice?.dispose();
     this.blockDice = null;
     this.numberDice?.dispose();
@@ -521,6 +536,7 @@ export class Pitch3D {
     this.nature?.tick(now);
     this.figurines?.tick(now);
     this.ball?.tick(now, this.figurines);
+    this.bomb?.tick(now, this.figurines);
     if (this.keys.has('a') || this.keys.has('e')) this.releaseTracking();
     if (!this.tickOverviewGlide(now)) this.tickTracking(now);
     const distance = this.camera.position.distanceTo(this.controls.target);
@@ -634,7 +650,10 @@ export class Pitch3D {
       this.lastTrackTick = now;
       return;
     }
-    const place = subject.kind === 'player' ? this.figurines?.where(subject.id) : this.ball?.spot();
+    const place =
+      subject.kind === 'player' ? this.figurines?.where(subject.id)
+      : subject.kind === 'bomb' ? this.bomb?.spot()
+      : this.ball?.spot();
     const dt = this.lastTrackTick ? Math.min(0.05, (now - this.lastTrackTick) / 1000) : 0;
     this.lastTrackTick = now;
     if (!place || dt <= 0) return;
@@ -732,7 +751,7 @@ export class Pitch3D {
 
 /** Cadrage d'une action. `close` : bloc ou touchdown. */
 export interface CameraFollow {
-  kind: 'player' | 'ball';
+  kind: 'player' | 'ball' | 'bomb';
   id: string;
   close: boolean;
 }

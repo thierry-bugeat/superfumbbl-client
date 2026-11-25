@@ -7,26 +7,29 @@ const MOVING = 0x02;
 /** Même vitesse que le glissé du ballon, en cases par seconde. */
 const BALL_SPEED = 6;
 
+export type TravelKind = 'ball' | 'bomb';
+
 let lastBall: [number, number] | null = null;
 let flightUntil = 0;
 /** Case d'arrivée d'une passe déjà lancée : le modèle l'y pose avant la fin du vol. */
 let thrownTo: [number, number] | null = null;
+let travelKind: TravelKind = 'ball';
 
 /**
- * Qui cadrer. Le joueur qui agit, le ballon seulement le temps de son trajet,
+ * Qui cadrer. Le joueur qui agit, le ballon ou la bombe le temps du trajet,
  * et un plan plus serré sur un bloc ou un touchdown.
  */
 export function cameraFollow(
   game: GameJson,
   command: ReplayCommand | null,
-  options: { touchdown: boolean; block: boolean; traveling: boolean },
+  options: { touchdown: boolean; block: boolean; traveling: false | TravelKind },
 ): CameraFollow | null {
   if (options.touchdown) {
     const scorer = scoringPlayerId(command);
     if (scorer && onPitch(game, scorer)) return { kind: 'player', id: scorer, close: true };
-    if (options.traveling) return { kind: 'ball', id: '', close: true };
+    if (options.traveling) return { kind: options.traveling, id: '', close: true };
   }
-  if (options.traveling) return { kind: 'ball', id: '', close: false };
+  if (options.traveling) return { kind: options.traveling, id: '', close: false };
   if (options.block) {
     const defender = game.defenderId;
     if (defender && onPitch(game, defender)) return { kind: 'player', id: defender, close: true };
@@ -46,13 +49,23 @@ export function cameraFollow(
  * et ne se rallonge pas quand le modèle pose ensuite la case d'arrivée.
  */
 export function noteBallThrow(from: [number, number], to: [number, number], now = performance.now()): void {
+  noteTravel('ball', from, to, now);
+}
+
+/** Même délai de cadrage que la passe, sur la bombe. */
+export function noteBombThrow(from: [number, number], to: [number, number], now = performance.now()): void {
+  noteTravel('bomb', from, to, now);
+}
+
+function noteTravel(kind: TravelKind, from: [number, number], to: [number, number], now: number): void {
+  travelKind = kind;
   const squares = Math.hypot(to[0] - from[0], to[1] - from[1]);
   const until = now + (squares / BALL_SPEED) * 1000;
   if (until > flightUntil) flightUntil = until;
   thrownTo = to;
 }
 
-export function consumeBallTravel(game: GameJson | null, jumped: boolean, now = performance.now()): boolean {
+export function consumeBallTravel(game: GameJson | null, jumped: boolean, now = performance.now()): false | TravelKind {
   const to = game ? ballSquare(game) : null;
   const from = lastBall;
   lastBall = to;
@@ -62,20 +75,23 @@ export function consumeBallTravel(game: GameJson | null, jumped: boolean, now = 
     return false;
   }
   // La réception est dans le modèle pendant que le ballon est encore en l'air.
-  if (ballCarried(game) && now >= flightUntil) {
+  if (travelKind === 'ball' && ballCarried(game) && now >= flightUntil) {
     flightUntil = 0;
     thrownTo = null;
     return false;
   }
-  if (to && from && (from[0] !== to[0] || from[1] !== to[1])) {
-    if (thrownTo && now < flightUntil) return true;
+  if (travelKind === 'ball' && to && from && (from[0] !== to[0] || from[1] !== to[1])) {
+    if (thrownTo && now < flightUntil) return travelKind;
     thrownTo = null;
     const squares = Math.hypot(to[0] - from[0], to[1] - from[1]);
     flightUntil = now + (squares / BALL_SPEED) * 1000;
-    return true;
+    return travelKind;
   }
-  if (now >= flightUntil) thrownTo = null;
-  return now < flightUntil;
+  if (now >= flightUntil) {
+    thrownTo = null;
+    return false;
+  }
+  return travelKind;
 }
 
 function scoringPlayerId(command: ReplayCommand | null): string | null {

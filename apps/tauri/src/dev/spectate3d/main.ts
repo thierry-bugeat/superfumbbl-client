@@ -10,7 +10,7 @@ import {
   type InducementChip,
 } from '../../game/logic/coachPanelChips';
 import { blockDiceColor, blockRollAt } from './blockRoll';
-import { cameraFollow, consumeBallTravel, noteBallThrow } from './cameraTrack';
+import { cameraFollow, consumeBallTravel, noteBallThrow, noteBombThrow, type TravelKind } from './cameraTrack';
 import { throwCue } from './throws';
 import { numberRollAt } from './numberRoll';
 import { GroundMarkTrack } from './groundMarks';
@@ -485,6 +485,10 @@ function launchThrow(command: ReplayCommand | null, jumped: boolean): void {
     case 'pass':
       pitch.throwBall(cue.from[0], cue.from[1], cue.to[0], cue.to[1]);
       if (!jumped) noteBallThrow(cue.from, cue.to);
+      return;
+    case 'bomb':
+      pitch.throwBomb(cue.from[0], cue.from[1], cue.to[0], cue.to[1]);
+      if (!jumped) noteBombThrow(cue.from, cue.to);
       return;
   }
 }
@@ -1377,7 +1381,7 @@ function aimCamera(
   game: GameJson,
   command: ReplayCommand | null,
   touchdown: boolean,
-  traveling: boolean,
+  traveling: false | TravelKind,
 ): void {
   const block = !touchdown && (
     blockRollAt(commands, at, game) != null

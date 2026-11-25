@@ -4,7 +4,8 @@ export type Square = [number, number];
 
 export type ThrowCue =
   | { kind: 'mate'; id: string; to: Square; withBall: boolean }
-  | { kind: 'pass'; from: Square; to: Square };
+  | { kind: 'pass'; from: Square; to: Square }
+  | { kind: 'bomb'; from: Square; to: Square };
 
 /**
  * Noms d'animation du serveur FFB (`AnimationType`). Seuls ceux que la 3D sait montrer :
@@ -15,10 +16,12 @@ export const THROW_KIND: Readonly<Record<string, ThrowCue['kind']>> = {
   hailMaryPass: 'pass',
   throwTeamMate: 'mate',
   kickTeamMate: 'mate',
+  throwBomb: 'bomb',
+  hailMaryBomb: 'bomb',
 };
 
 /** Lancés que la 3D ne montre pas encore. Les ranger ici les sort du contrôle. */
-export const UNSHOWN_THROWS: ReadonlySet<string> = new Set(['throwBomb', 'hailMaryBomb', 'throwARock', 'throwKeg']);
+export const UNSHOWN_THROWS: ReadonlySet<string> = new Set(['throwARock', 'throwKeg']);
 
 interface ThrowAnimation {
   animationType?: unknown;
@@ -52,7 +55,7 @@ export function throwCue(command: ReplayCommand | null): ThrowCue | null {
     if (animation.thrownPlayerId == null || !to) return null;
     return { kind, id: String(animation.thrownPlayerId), to, withBall: animation.withBall === true };
   }
-  if (kind === 'pass') {
+  if (kind === 'pass' || kind === 'bomb') {
     const from = square(animation.startCoordinate);
     // Une interception termine le vol sur la case de l'intercepteur.
     const to = square(animation.interceptorCoordinate) ?? square(animation.endCoordinate);
