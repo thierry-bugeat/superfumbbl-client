@@ -26,6 +26,7 @@ import { PitchTree } from './environment/tree';
 import { PitchNature } from './environment/nature';
 import { PitchBillboards } from './environment/billboards';
 import { clampRainSettings, DEFAULT_RAIN_SETTINGS, PitchRain, type RainSettings } from './environment/rain';
+import { RainSound } from './environment/rainSound';
 import { clampSnowSettings, DEFAULT_SNOW_SETTINGS, PitchSnow, type SnowSettings } from './environment/snow';
 import { setSnowCap } from './environment/snowCap';
 import { Figurines } from './actors/figurines';
@@ -81,6 +82,7 @@ export class Pitch3D {
   private frame = 0;
   private weather: WeatherKey | null = null;
   private rain: PitchRain | null = null;
+  private rainSound: RainSound | null = null;
   private rainSettings: RainSettings = { ...DEFAULT_RAIN_SETTINGS };
   private snow: PitchSnow | null = null;
   private snowSettings: SnowSettings = { ...DEFAULT_SNOW_SETTINGS };
@@ -197,6 +199,8 @@ export class Pitch3D {
     this.bindPointer(renderer.domElement);
     this.rain = new PitchRain(scene);
     this.rain.apply(this.rainSettings);
+    this.rainSound = new RainSound();
+    this.rainSound.setParams(this.rainSettings);
     this.snow = new PitchSnow(scene);
     this.snow.apply(this.snowSettings);
     this.weather = null;
@@ -350,6 +354,7 @@ export class Pitch3D {
   setRainSettings(patch: Partial<RainSettings>): void {
     this.rainSettings = clampRainSettings({ ...this.rainSettings, ...patch });
     this.rain?.apply(this.rainSettings);
+    this.rainSound?.setParams(this.rainSettings);
     this.syncRain();
   }
 
@@ -453,6 +458,8 @@ export class Pitch3D {
     this.fog = null;
     this.rain?.dispose();
     this.rain = null;
+    this.rainSound?.dispose();
+    this.rainSound = null;
     this.snow?.dispose();
     this.snow = null;
     setSnowCap(0);
@@ -496,7 +503,9 @@ export class Pitch3D {
 
   /** La pluie suit la météo, sauf si la console l'a forcée. */
   private syncRain(): void {
-    this.rain?.setVisible(this.rainSettings.force || this.weather === 'rain');
+    const on = this.rainSettings.force || this.weather === 'rain';
+    this.rain?.setVisible(on);
+    this.rainSound?.setRaining(on);
   }
 
   /** La neige tombe par blizzard, ou si la console l'a forcée. Le sol déjà couvert fond tout seul. */
@@ -566,7 +575,11 @@ export class Pitch3D {
     const rainDt = this.lastRainTick ? Math.min(0.05, (now - this.lastRainTick) / 1000) : 0;
     this.lastRainTick = now;
     const flash = rainDt > 0 ? this.rain?.tick(rainDt, this.controls.target.x, this.controls.target.z) ?? 0 : 0;
-    if (rainDt > 0) this.snow?.tick(rainDt, this.camera.quaternion);
+    if ((this.rain?.takeBolts() ?? 0) > 0) this.rainSound?.thunder();
+    if (rainDt > 0) {
+      this.snow?.tick(rainDt, this.camera.quaternion);
+      this.rainSound?.tick(rainDt);
+    }
     setSnowCap(this.snow?.cap() ?? 0);
     this.paintLightning(flash);
     this.frames += 1;
@@ -692,16 +705,24 @@ export class Pitch3D {
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
+    window.addEventListener('pointerdown', this.onPointerDown);
   }
 
   private unbindKeys(): void {
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onBlur);
+    window.removeEventListener('pointerdown', this.onPointerDown);
     this.keys.clear();
   }
 
+  /** Le navigateur ne démarre l'audio qu'après un geste. */
+  private onPointerDown = (): void => {
+    this.rainSound?.unlock();
+  };
+
   private onKeyDown = (event: KeyboardEvent): void => {
+    this.rainSound?.unlock();
     if (typing(event.target)) return;
     const key = event.key.length === 1 ? event.key.toLowerCase() : '';
     if (!CAMERA_KEYS.has(key)) return;

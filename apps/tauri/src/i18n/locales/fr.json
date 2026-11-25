@@ -3442,6 +3442,8 @@
   "spectate3d.console.rain.force": "Forcer la pluie",
   "spectate3d.console.rain.forceHint": "Quelle que soit la météo de la partie.",
   "spectate3d.console.rain.impacts": "{n} impacts/s",
+  "spectate3d.console.rain.sound": "Volume de l'orage",
+  "spectate3d.console.rain.soundValue": "{n} %",
   "spectate3d.console.rain.splash": "Taille des éclaboussures",
   "spectate3d.console.rain.splashValue": "{n}×",
   "spectate3d.console.rain.wind": "Force du vent",

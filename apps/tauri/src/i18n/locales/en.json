@@ -3340,6 +3340,8 @@
   "spectate3d.console.rain.force": "Force rain",
   "spectate3d.console.rain.forceHint": "Whatever the match weather.",
   "spectate3d.console.rain.impacts": "{n} impacts/s",
+  "spectate3d.console.rain.sound": "Storm volume",
+  "spectate3d.console.rain.soundValue": "{n}%",
   "spectate3d.console.rain.splash": "Splash size",
   "spectate3d.console.rain.splashValue": "{n}×",
   "spectate3d.console.rain.wind": "Wind strength",

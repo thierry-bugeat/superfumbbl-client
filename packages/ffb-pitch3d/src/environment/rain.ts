@@ -46,12 +46,15 @@ export interface RainSettings {
   autoLightning: boolean;
   /** Affiche la pluie même si la météo de la partie n'est pas la pluie. */
   force: boolean;
+  /** Volume de l'averse et du tonnerre, de 0 à 1. */
+  volume: number;
 }
 
 export const RAIN_RANGE = {
   drops: { min: 500, max: MAX_DROPS, step: 500 },
   wind: { min: -15, max: 25, step: 1 },
   splash: { min: 0.4, max: 2.2, step: 0.1 },
+  volume: { min: 0, max: 1, step: 0.05 },
 } as const;
 
 export const DEFAULT_RAIN_SETTINGS: RainSettings = {
@@ -60,6 +63,7 @@ export const DEFAULT_RAIN_SETTINGS: RainSettings = {
   splash: 1,
   autoLightning: true,
   force: false,
+  volume: 0.1,
 };
 
 export function clampRainSettings(value: Partial<RainSettings>, base: RainSettings = DEFAULT_RAIN_SETTINGS): RainSettings {
@@ -69,6 +73,7 @@ export function clampRainSettings(value: Partial<RainSettings>, base: RainSettin
     splash: snap(asNumber(value.splash, base.splash), RAIN_RANGE.splash.min, RAIN_RANGE.splash.max, RAIN_RANGE.splash.step),
     autoLightning: asFlag(value.autoLightning, base.autoLightning),
     force: asFlag(value.force, base.force),
+    volume: snap(asNumber(value.volume, base.volume), RAIN_RANGE.volume.min, RAIN_RANGE.volume.max, RAIN_RANGE.volume.step),
   };
 }
 
@@ -111,6 +116,7 @@ export class PitchRain {
   private impactTimer = 0;
   private impactCount = 0;
   private impactRate = 0;
+  private bolts = 0;
 
   constructor(scene: Scene) {
     this.group.name = 'rain';
@@ -192,12 +198,20 @@ export class PitchRain {
 
   /** Éclair tout de suite. L'éclair éclaire le terrain même si les gouttes sont masquées. */
   triggerLightning(): void {
+    this.bolts += 1;
     this.flash = 1;
     this.light.position.set(
       this.aimX + (Math.random() - 0.5) * 40,
       45,
       this.aimZ + (Math.random() - 0.5) * 40,
     );
+  }
+
+  /** Éclairs partis depuis le dernier appel. Le son s'en sert, le dessin non. */
+  takeBolts(): number {
+    const count = this.bolts;
+    this.bolts = 0;
+    return count;
   }
 
   /** Puissance de l'éclair en cours, de 0 à 1, déjà scintillante. */

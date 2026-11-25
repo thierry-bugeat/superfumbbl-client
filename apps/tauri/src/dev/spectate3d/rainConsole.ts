@@ -17,14 +17,16 @@ export function mountRainConsole(pitch: Pitch3D): void {
   const drops = document.querySelector<HTMLInputElement>('#rain-drops');
   const wind = document.querySelector<HTMLInputElement>('#rain-wind');
   const splash = document.querySelector<HTMLInputElement>('#rain-splash');
+  const sound = document.querySelector<HTMLInputElement>('#rain-sound');
   const auto = document.querySelector<HTMLInputElement>('#rain-auto');
   const force = document.querySelector<HTMLInputElement>('#rain-force');
   const bolt = document.querySelector<HTMLButtonElement>('#rain-bolt');
   const dropsVal = document.querySelector<HTMLElement>('#rain-drops-val');
   const windVal = document.querySelector<HTMLElement>('#rain-wind-val');
   const splashVal = document.querySelector<HTMLElement>('#rain-splash-val');
+  const soundVal = document.querySelector<HTMLElement>('#rain-sound-val');
   const impacts = document.querySelector<HTMLElement>('#rain-impacts');
-  if (!drops || !wind || !splash || !auto || !force || !bolt || !dropsVal || !windVal || !splashVal) return;
+  if (!drops || !wind || !splash || !sound || !auto || !force || !bolt || !dropsVal || !windVal || !splashVal || !soundVal) return;
 
   drops.min = String(RAIN_RANGE.drops.min);
   drops.max = String(RAIN_RANGE.drops.max);
@@ -35,16 +37,21 @@ export function mountRainConsole(pitch: Pitch3D): void {
   splash.min = String(RAIN_RANGE.splash.min);
   splash.max = String(RAIN_RANGE.splash.max);
   splash.step = String(RAIN_RANGE.splash.step);
+  sound.min = String(RAIN_RANGE.volume.min);
+  sound.max = String(RAIN_RANGE.volume.max);
+  sound.step = String(RAIN_RANGE.volume.step);
 
   const paint = (next: RainSettings): void => {
     drops.value = String(next.drops);
     wind.value = String(next.wind);
     splash.value = String(next.splash);
+    sound.value = String(next.volume);
     auto.checked = next.autoLightning;
     force.checked = next.force;
     dropsVal.textContent = t('spectate3d.console.rain.dropsValue', { n: formatInt(next.drops) });
     windVal.textContent = t('spectate3d.console.rain.windValue', { n: formatInt(Math.abs(Math.round(next.wind * 3))) });
     splashVal.textContent = t('spectate3d.console.rain.splashValue', { n: formatTenths(next.splash) });
+    soundVal.textContent = t('spectate3d.console.rain.soundValue', { n: formatInt(Math.round(next.volume * 100)) });
   };
 
   const push = (): void => {
@@ -52,6 +59,7 @@ export function mountRainConsole(pitch: Pitch3D): void {
       drops: Number(drops.value),
       wind: Number(wind.value),
       splash: Number(splash.value),
+      volume: Number(sound.value),
       autoLightning: auto.checked,
       force: force.checked,
     });
@@ -64,6 +72,7 @@ export function mountRainConsole(pitch: Pitch3D): void {
   drops.addEventListener('input', push);
   wind.addEventListener('input', push);
   splash.addEventListener('input', push);
+  sound.addEventListener('input', push);
   auto.addEventListener('change', push);
   force.addEventListener('change', push);
   bolt.addEventListener('click', () => pitch.triggerRainLightning());
@@ -82,6 +91,8 @@ function readRainSettings(): RainSettings {
     if (!raw) return { ...DEFAULT_RAIN_SETTINGS };
     const parsed = JSON.parse(raw) as Partial<RainSettings>;
     if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_RAIN_SETTINGS };
+    // L'ancien défaut, 70 %, partait dans le stockage dès qu'on touchait un curseur.
+    if (parsed.volume === 0.7) delete parsed.volume;
     return clampRainSettings(parsed);
   } catch {
     return { ...DEFAULT_RAIN_SETTINGS };
