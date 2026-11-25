@@ -201,8 +201,8 @@ export class Pitch3D {
     this.frame = requestAnimationFrame(this.animate);
   }
 
-  /** Météo, figurines et ballon. Un état sans joueurs (bouton météo) ne retire personne. */
-  present(game: GameJson): void {
+  /** Météo, figurines et ballon. Un état sans joueurs (bouton météo) ne retire personne. `cut` : un saut. */
+  present(game: GameJson, cut = false): void {
     const key = pitchWeatherKey(game.fieldModel?.weather);
     if (key !== this.weather) this.presentWeather(key);
     if (game.fieldModel?.playerDataArray) {
@@ -211,7 +211,7 @@ export class Pitch3D {
       if (this.tackleZonesOn) this.tackleZones?.sync(game);
     }
     if (game.fieldModel?.playerDataArray || (game.fieldModel && 'ballCoordinate' in game.fieldModel)) {
-      this.ball?.sync(game);
+      this.ball?.sync(game, cut);
     }
   }
 
@@ -220,6 +220,13 @@ export class Pitch3D {
     const world = squareToWorld(squareX, squareY);
     this.figurines?.flyTo(id, world.x, world.z);
     if (withBall && this.figurines && this.ball) this.ball.followThrow(this.figurines, id);
+  }
+
+  /** Passe : la parabole du ballon part tout de suite, avant que le modèle ne le pose. */
+  throwBall(fromX: number, fromY: number, toX: number, toY: number): void {
+    const from = squareToWorld(fromX, fromY);
+    const to = squareToWorld(toX, toY);
+    this.ball?.throwTo(to.x, to.z, from.x, from.z);
   }
 
   /** Remet la vue d'ensemble. Le suivi reste dans l'état choisi par le bouton. */

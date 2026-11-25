@@ -22,7 +22,7 @@ import {
   Vector2,
 } from 'three';
 import { squareToWorld } from '../coords';
-import type { Figurines } from './figurines';
+import { throwArcHeight, type Figurines } from './figurines';
 
 const BALL_URL = new URL('../../assets/textures/ball.jpg', import.meta.url).href;
 const MOVE_SPEED = 6;
@@ -63,6 +63,16 @@ export class PitchBall {
   private carrierId: string | null = null;
   /** Porteur lancé : on ignore la case du modèle tant qu'elle n'a pas rejoint l'arrivée. */
   private followId: string | null = null;
+  /**
+   * Passe en l'air. L'origine reste celle du lâcher : le modèle peut poser le ballon
+   * à l'arrivée, ou le faire réceptionner, avant que la parabole soit finie.
+   */
+  private lob: { startX: number; startZ: number; height: number; releaseY: number } | null = null;
+  /** Case du modèle à appliquer une fois le lob posé. */
+  private settledX = 0;
+  private settledZ = 0;
+  private settledOnPitch = true;
+  private pendingCarrierId: string | null = null;
   private placed = false;
   private airborne = false;
   private flightDistance = 0;
@@ -99,11 +109,27 @@ export class PitchBall {
     this.buildBeam();
   }
 
-  /** Affiche le ballon sur sa case, ou le colle au porteur debout. */
-  sync(game: GameJson): void {
+  /** Affiche le ballon sur sa case, ou le colle au porteur debout. `cut` : un saut, le lob en cours n'a plus cours. */
+  sync(game: GameJson, cut = false): void {
+    if (cut) this.lob = null;
     const field = game.fieldModel;
     const coordinate = field?.ballCoordinate;
     const onPitch = !!coordinate && coordinate[0] >= 0 && coordinate[0] <= 25 && coordinate[1] >= 0 && coordinate[1] <= 14;
+    if (this.lob) {
+      this.group.visible = true;
+      this.placed = true;
+      if (!onPitch || !coordinate) {
+        this.settledOnPitch = false;
+        this.pendingCarrierId = null;
+        return;
+      }
+      const world = squareToWorld(coordinate[0], coordinate[1]);
+      this.settledX = world.x;
+      this.settledZ = world.z;
+      this.settledOnPitch = true;
+      this.pendingCarrierId = carrierOnSquare(game, coordinate[0], coordinate[1]);
+      return;
+    }
     if (!onPitch || !coordinate) {
       this.followId = null;
       this.group.visible = false;
@@ -148,6 +174,7 @@ export class PitchBall {
     const atDeparture = Math.hypot(this.group.position.x - flight.startX, this.group.position.z - flight.startZ) < 0.75;
     const onPlayer = Math.hypot(this.group.position.x - flight.x, this.group.position.z - flight.z) < 0.75;
     if (!atDeparture && !onPlayer && this.followId !== id) return;
+    this.lob = null;
     this.followId = id;
     this.targetX = flight.targetX;
     this.targetZ = flight.targetZ;
@@ -156,10 +183,123 @@ export class PitchBall {
     this.placed = true;
   }
 
+  /**
+   * Passe, ou renvoi : la parabole part tout de suite vers la case annoncée.
+   * Un second ordre pendant le vol allonge la courbe sans changer l'origine.
+   * Si le modèle a déjà posé le ballon à l'arrivée, on repart de la case de lâcher.
+   */
+  throwTo(toX: number, toZ: number, fromX: number, fromZ: number): void {
+    this.group.visible = true;
+    this.placed = true;
+    this.followId = null;
+    this.carrierId = null;
+    this.airborne = false;
+    if (this.lob) {
+      const distance = Math.hypot(toX - this.lob.startX, toZ - this.lob.startZ);
+      if (distance < 0.2) return;
+      this.lob.height = throwArcHeight(distance);
+      this.targetX = toX;
+      this.targetZ = toZ;
+      this.settledX = toX;
+      this.settledZ = toZ;
+      this.settledOnPitch = true;
+      return;
+    }
+    let startX = this.group.position.x;
+    let startZ = this.group.position.z;
+    const nearStart = Math.hypot(startX - fromX, startZ - fromZ) < 0.75;
+    if (!nearStart) {
+      startX = fromX;
+      startZ = fromZ;
+      this.group.position.set(fromX, 0.22, fromZ);
+    }
+    const distance = Math.hypot(toX - startX, toZ - startZ);
+    if (distance < 0.2) return;
+    this.lob = {
+      startX,
+      startZ,
+      height: throwArcHeight(distance),
+      releaseY: this.group.position.y,
+    };
+    this.targetX = toX;
+    this.targetZ = toZ;
+    this.settledX = toX;
+    this.settledZ = toZ;
+    this.settledOnPitch = true;
+    this.pendingCarrierId = null;
+    this.showLooseMarker(false);
+  }
+
   tick(now: number, figurines: Figurines | null): void {
     if (!this.group.visible) return;
     const dt = this.lastTick ? Math.min(0.05, (now - this.lastTick) / 1000) : 0;
     this.lastTick = now;
+    if (this.lob) {
+      this.stepLob(dt, figurines);
+    } else {
+      this.stepGround(dt, figurines, now);
+    }
+    if (this.mesh) {
+      this.mesh.rotation.x += this.spinX * dt;
+      this.mesh.rotation.y += this.spinY * dt;
+      this.mesh.rotation.z += this.spinZ * dt;
+    }
+    this.pulseBeam(now);
+  }
+
+  private stepLob(dt: number, figurines: Figurines | null): void {
+    const lob = this.lob;
+    if (!lob) return;
+    this.showLooseMarker(false);
+    const dx = this.targetX - this.group.position.x;
+    const dz = this.targetZ - this.group.position.z;
+    const distance = Math.hypot(dx, dz);
+    const step = MOVE_SPEED * dt;
+    if (distance <= step || distance < 0.0001) {
+      this.group.position.x = this.targetX;
+      this.group.position.z = this.targetZ;
+      this.landLob(figurines);
+      return;
+    }
+    this.group.position.x += (dx / distance) * step;
+    this.group.position.z += (dz / distance) * step;
+    const total = Math.hypot(this.targetX - lob.startX, this.targetZ - lob.startZ);
+    const traveled = Math.hypot(this.group.position.x - lob.startX, this.group.position.z - lob.startZ);
+    const t = total <= 0.0001 ? 1 : Math.min(1, traveled / total);
+    const arc = 4 * lob.height * t * (1 - t);
+    this.group.position.y = lob.releaseY + (0.22 - lob.releaseY) * t + arc;
+  }
+
+  /** Le lob est fini : dans les mains s'il y a réception, sinon la case où le modèle l'a laissé. */
+  private landLob(figurines: Figurines | null): void {
+    const landingX = this.targetX;
+    const landingZ = this.targetZ;
+    this.lob = null;
+    this.showLooseMarker(true);
+    const carrier = this.pendingCarrierId ? figurines?.where(this.pendingCarrierId) : null;
+    if (carrier && Math.hypot(carrier.x - landingX, carrier.z - landingZ) < 0.75) {
+      this.carrierId = this.pendingCarrierId;
+      this.airborne = false;
+      this.group.position.set(carrier.x, carrier.y + CARRIED_Y, carrier.z);
+      return;
+    }
+    this.carrierId = null;
+    if (!this.settledOnPitch) {
+      this.group.visible = false;
+      this.placed = false;
+      this.group.position.y = 0.22;
+      return;
+    }
+    const hop = Math.hypot(this.settledX - landingX, this.settledZ - landingZ);
+    this.targetX = this.settledX;
+    this.targetZ = this.settledZ;
+    this.airborne = hop > 1.6;
+    this.flightDistance = this.airborne ? Math.max(hop, 0.001) : 0;
+    if (!this.airborne) this.group.position.y = 0.22;
+  }
+
+  private stepGround(dt: number, figurines: Figurines | null, now: number): void {
+    this.showLooseMarker(true);
     const ride = this.followId ? figurines?.where(this.followId) : null;
     if (this.followId && ride) {
       this.group.position.set(ride.x, ride.y + CARRIED_Y, ride.z);
@@ -189,12 +329,13 @@ export class PitchBall {
         this.group.position.y = 0.22 + bounce + arc;
       }
     }
-    if (this.mesh) {
-      this.mesh.rotation.x += this.spinX * dt;
-      this.mesh.rotation.y += this.spinY * dt;
-      this.mesh.rotation.z += this.spinZ * dt;
-    }
-    this.pulseBeam(now);
+  }
+
+  /** Le faisceau monte avec le ballon. En l'air, seule la tache reste au sol, sous la parabole. */
+  private showLooseMarker(onGround: boolean): void {
+    if (this.beam) this.beam.visible = onGround;
+    if (this.particles) this.particles.visible = onGround;
+    if (this.glow) this.glow.visible = true;
   }
 
   dispose(): void {

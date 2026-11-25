@@ -10,7 +10,8 @@ import {
   type InducementChip,
 } from '../../game/logic/coachPanelChips';
 import { blockDiceColor, blockRollAt } from './blockRoll';
-import { cameraFollow, consumeBallTravel } from './cameraTrack';
+import { cameraFollow, consumeBallTravel, noteBallThrow } from './cameraTrack';
+import { throwCue } from './throws';
 import { numberRollAt } from './numberRoll';
 import { GroundMarkTrack } from './groundMarks';
 import { describeState } from './describeState';
@@ -473,30 +474,19 @@ function renderMatchLog(lines?: readonly string[]): void {
   if (logStickToBottom && logInner) logInner.scrollTop = logInner.scrollHeight;
 }
 
-/**
- * L'animation annonce la case d'arrivée avant que le modèle n'y pose le joueur.
- * La parabole part à cette annonce et continue si l'état change en plein vol.
- */
-function thrownMate(command: { animation?: unknown; [key: string]: unknown } | null): { id: string; x: number; y: number; withBall: boolean } | null {
-  const animation = command?.animation as {
-    animationType?: unknown;
-    thrownPlayerId?: unknown;
-    endCoordinate?: unknown;
-    withBall?: unknown;
-  } | null | undefined;
-  if (!animation) return null;
-  const type = String(animation.animationType ?? '');
-  if (type !== 'throwTeamMate' && type !== 'kickTeamMate') return null;
-  if (animation.thrownPlayerId == null || !Array.isArray(animation.endCoordinate)) return null;
-  const [x, y] = animation.endCoordinate as number[];
-  if (typeof x !== 'number' || typeof y !== 'number' || !Number.isInteger(x) || !Number.isInteger(y)) return null;
-  return { id: String(animation.thrownPlayerId), x, y, withBall: animation.withBall === true };
-}
-
-function lobThrownMate(command: { animation?: unknown; [key: string]: unknown } | null): void {
-  const thrown = thrownMate(command);
-  if (!thrown) return;
-  pitch.throwMate(thrown.id, thrown.x, thrown.y, thrown.withBall);
+/** La parabole part à l'annonce et continue si l'état change en plein vol. `jumped` : pas de cadrage. */
+function launchThrow(command: ReplayCommand | null, jumped: boolean): void {
+  const cue = throwCue(command);
+  if (!cue) return;
+  switch (cue.kind) {
+    case 'mate':
+      pitch.throwMate(cue.id, cue.to[0], cue.to[1], cue.withBall);
+      return;
+    case 'pass':
+      pitch.throwBall(cue.from[0], cue.from[1], cue.to[0], cue.to[1]);
+      if (!jumped) noteBallThrow(cue.from, cue.to);
+      return;
+  }
 }
 
 let timeline: ReplayTimeline | null = null;
@@ -931,8 +921,8 @@ async function show(): Promise<void> {
     ? t('spectate3d.status.command', { index, total: current.commands.length, id: command.netCommandId })
     : t('spectate3d.status.start', { total: current.commands.length });
   applySkillBadges(state);
-  pitch.present(state);
-  lobThrownMate(command);
+  pitch.present(state, jumped);
+  launchThrow(command, jumped);
   shownGame = state;
   playerCards.refresh(state);
   showBlockDice(current.commands, index, state);

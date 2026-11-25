@@ -9,7 +9,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "check": "node packages/ffb-pitch3d/scripts/check-boundaries.mjs && pnpm --filter @fumbbl40k/ffb-pitch3d typecheck && pnpm --filter @fumbbl40k/app typecheck"
+    "check": "node packages/ffb-pitch3d/scripts/check-boundaries.mjs && node apps/tauri/src/dev/spectate3d/throws.check.mjs && pnpm --filter @fumbbl40k/ffb-pitch3d typecheck && pnpm --filter @fumbbl40k/app typecheck"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.4",

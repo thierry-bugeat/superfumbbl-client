@@ -130,7 +130,8 @@ const FLIGHT_ARC_BASE = 1.6;
 const FLIGHT_ARC_PER_TILE = 0.48;
 const FLIGHT_ARC_MAX = 7.5;
 
-function flightHeight(distance: number): number {
+/** Hauteur du lob, partagée par le coéquipier lancé et la passe. */
+export function throwArcHeight(distance: number): number {
   return Math.min(FLIGHT_ARC_MAX, FLIGHT_ARC_BASE + distance * FLIGHT_ARC_PER_TILE);
 }
 
@@ -220,7 +221,7 @@ function adoptPlace(actor: Actor, place: Placement): void {
   if (!atStart) {
     actor.targetX = place.x;
     actor.targetZ = place.z;
-    actor.flight.height = flightHeight(Math.hypot(place.x - actor.flight.startX, place.z - actor.flight.startZ));
+    actor.flight.height = throwArcHeight(Math.hypot(place.x - actor.flight.startX, place.z - actor.flight.startZ));
   }
   pose(actor, false, false);
 }
@@ -362,11 +363,11 @@ export class Figurines {
     const distance = Math.hypot(x - originX, z - originZ);
     if (!actor.flight) {
       if (distance < 0.2) return;
-      actor.flight = { startX: actor.root.position.x, startZ: actor.root.position.z, height: flightHeight(distance) };
+      actor.flight = { startX: actor.root.position.x, startZ: actor.root.position.z, height: throwArcHeight(distance) };
       pose(actor, false, false);
       return;
     }
-    actor.flight.height = flightHeight(distance);
+    actor.flight.height = throwArcHeight(distance);
     pose(actor, false, false);
   }
 

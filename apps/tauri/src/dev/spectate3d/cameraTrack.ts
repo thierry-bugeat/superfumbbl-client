@@ -9,6 +9,8 @@ const BALL_SPEED = 6;
 
 let lastBall: [number, number] | null = null;
 let flightUntil = 0;
+/** Case d'arrivée d'une passe déjà lancée : le modèle l'y pose avant la fin du vol. */
+let thrownTo: [number, number] | null = null;
 
 /**
  * Qui cadrer. Le joueur qui agit, le ballon seulement le temps de son trajet,
@@ -40,20 +42,39 @@ export function cameraFollow(
  * Le ballon change de case sans être porté. Le drapeau `ballMoving` reste vrai
  * tant qu'il est libre, y compris posé : il ne dit pas qu'il se déplace.
  * Le délai couvre le glissé à l'écran, puis le cadrage lâche le ballon.
+ * Une passe est annoncée avant ce changement : le cadrage part au lâcher
+ * et ne se rallonge pas quand le modèle pose ensuite la case d'arrivée.
  */
+export function noteBallThrow(from: [number, number], to: [number, number], now = performance.now()): void {
+  const squares = Math.hypot(to[0] - from[0], to[1] - from[1]);
+  const until = now + (squares / BALL_SPEED) * 1000;
+  if (until > flightUntil) flightUntil = until;
+  thrownTo = to;
+}
+
 export function consumeBallTravel(game: GameJson | null, jumped: boolean, now = performance.now()): boolean {
   const to = game ? ballSquare(game) : null;
   const from = lastBall;
   lastBall = to;
-  if (!game || jumped || ballCarried(game)) {
+  if (!game || jumped) {
     flightUntil = 0;
+    thrownTo = null;
+    return false;
+  }
+  // La réception est dans le modèle pendant que le ballon est encore en l'air.
+  if (ballCarried(game) && now >= flightUntil) {
+    flightUntil = 0;
+    thrownTo = null;
     return false;
   }
   if (to && from && (from[0] !== to[0] || from[1] !== to[1])) {
+    if (thrownTo && now < flightUntil) return true;
+    thrownTo = null;
     const squares = Math.hypot(to[0] - from[0], to[1] - from[1]);
     flightUntil = now + (squares / BALL_SPEED) * 1000;
     return true;
   }
+  if (now >= flightUntil) thrownTo = null;
   return now < flightUntil;
 }
 
