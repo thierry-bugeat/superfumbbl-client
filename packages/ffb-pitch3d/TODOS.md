@@ -6,4 +6,4 @@ Match ID 4516417, à partir commande 2934
 
 ## [Done] Lancé de bombe
 Objet 3D Bob-omb + parabole (`throwBomb` / `hailMaryBomb`)
-Explosion à l'atterrissage : à faire
+Explosion feu 3×3 (`bombExplosion`)

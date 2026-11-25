@@ -32,6 +32,7 @@ import { Figurines } from './actors/figurines';
 import { TackleZones } from './actors/tackleZones';
 import { PitchBall } from './actors/ball';
 import { PitchBomb } from './actors/bomb';
+import { PitchExplosion } from './actors/explosion';
 import { BlockDice, type BlockDiceSpec } from './actors/dice/dBlock';
 import { NumberDice, type NumberDiceSpec } from './actors/dice/d6';
 import { GroundMarks, type GroundMark } from './actors/groundMarks';
@@ -71,6 +72,7 @@ export class Pitch3D {
   private lineup: GameJson | null = null;
   private ball: PitchBall | null = null;
   private bomb: PitchBomb | null = null;
+  private explosion: PitchExplosion | null = null;
   private blockDice: BlockDice | null = null;
   private numberDice: NumberDice | null = null;
   private groundMarks: GroundMarks | null = null;
@@ -182,6 +184,7 @@ export class Pitch3D {
     this.tackleZones = new TackleZones(scene);
     this.ball = new PitchBall(scene);
     this.bomb = new PitchBomb(scene);
+    this.explosion = new PitchExplosion(scene);
     this.blockDice = new BlockDice(scene);
     this.numberDice = new NumberDice(scene);
     this.groundMarks = new GroundMarks(scene);
@@ -240,6 +243,12 @@ export class Pitch3D {
     const from = squareToWorld(fromX, fromY);
     const to = squareToWorld(toX, toY);
     this.bomb?.throwTo(to.x, to.z, from.x, from.z);
+  }
+
+  /** Détonation Blood Bowl : feu sur la case et les 8 adjacentes (≈ 3×3). */
+  explodeBomb(squareX: number, squareY: number): void {
+    this.bomb?.vanish();
+    this.explosion?.burst(squareX, squareY);
   }
 
   /** Remet la vue d'ensemble. Le suivi reste dans l'état choisi par le bouton. */
@@ -431,6 +440,8 @@ export class Pitch3D {
     this.ball = null;
     this.bomb?.dispose();
     this.bomb = null;
+    this.explosion?.dispose();
+    this.explosion = null;
     this.blockDice?.dispose();
     this.blockDice = null;
     this.numberDice?.dispose();
@@ -537,6 +548,7 @@ export class Pitch3D {
     this.figurines?.tick(now);
     this.ball?.tick(now, this.figurines);
     this.bomb?.tick(now, this.figurines);
+    this.explosion?.tick(now);
     if (this.keys.has('a') || this.keys.has('e')) this.releaseTracking();
     if (!this.tickOverviewGlide(now)) this.tickTracking(now);
     const distance = this.camera.position.distanceTo(this.controls.target);

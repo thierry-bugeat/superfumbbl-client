@@ -46,6 +46,12 @@ export class PitchBomb {
   private settledOnPitch = true;
   private pendingCarrierId: string | null = null;
   private placed = false;
+  /**
+   * Le modèle pose la bombe sur sa case avant l'animation de lancé.
+   * Tant que ce vol n'a pas commencé, on ne la montre pas : sinon elle apparaît,
+   * puis le lancé la rejoue depuis le lanceur.
+   */
+  private revealed = false;
   private airborne = false;
   private flightDistance = 0;
   private lastTick = 0;
@@ -64,13 +70,17 @@ export class PitchBomb {
 
   /** Affiche la bombe sur sa case, ou la colle au porteur. `cut` : un saut, le lob n'a plus cours. */
   sync(game: GameJson, cut = false): void {
-    if (cut) this.lob = null;
+    if (cut) {
+      this.lob = null;
+      this.revealed = false;
+    }
     const field = game.fieldModel;
     const coordinate = field?.bombCoordinate;
     const onPitch = !!coordinate && coordinate[0] >= 0 && coordinate[0] <= 25 && coordinate[1] >= 0 && coordinate[1] <= 14;
     if (this.lob) {
       this.group.visible = true;
       this.placed = true;
+      this.revealed = true;
       if (!onPitch || !coordinate) {
         this.settledOnPitch = false;
         this.pendingCarrierId = null;
@@ -86,16 +96,19 @@ export class PitchBomb {
     if (!onPitch || !coordinate) {
       this.group.visible = false;
       this.placed = false;
+      this.revealed = false;
       this.carrierId = null;
       return;
     }
+    if (!cut && field?.bombMoving && !this.revealed) return;
     const world = squareToWorld(coordinate[0], coordinate[1]);
     const carrier = carrierOnSquare(game, coordinate[0], coordinate[1]);
     const hop = Math.hypot(world.x - this.targetX, world.z - this.targetZ);
     this.targetX = world.x;
     this.targetZ = world.z;
     this.carrierId = carrier;
-    this.airborne = !carrier && (field?.bombMoving === true || hop > 1.6);
+    this.revealed = true;
+    this.airborne = !carrier && hop > 1.6;
     this.flightDistance = this.airborne ? Math.max(hop, 0.001) : 0;
     if (!this.placed) {
       this.group.position.set(world.x, carrier ? CARRIED_Y : GROUND_Y, world.z);
@@ -110,6 +123,17 @@ export class PitchBomb {
     return { x: this.group.position.x, z: this.group.position.z };
   }
 
+  /** La bombe disparaît dans l'explosion. */
+  vanish(): void {
+    this.lob = null;
+    this.carrierId = null;
+    this.pendingCarrierId = null;
+    this.placed = false;
+    this.revealed = false;
+    this.airborne = false;
+    this.group.visible = false;
+  }
+
   /**
    * Lancé : la parabole part tout de suite vers la case annoncée.
    * Un second ordre pendant le vol allonge la courbe sans changer l'origine.
@@ -117,6 +141,7 @@ export class PitchBomb {
   throwTo(toX: number, toZ: number, fromX: number, fromZ: number): void {
     this.group.visible = true;
     this.placed = true;
+    this.revealed = true;
     this.carrierId = null;
     this.airborne = false;
     if (this.lob) {

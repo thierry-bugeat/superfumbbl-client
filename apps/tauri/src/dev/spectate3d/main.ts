@@ -493,6 +493,20 @@ function launchThrow(command: ReplayCommand | null, jumped: boolean): void {
   }
 }
 
+/** Détonation annoncée par le serveur (`bombExplosion`), après le vol. */
+function launchExplosion(command: ReplayCommand | null, jumped: boolean): void {
+  if (jumped || !command) return;
+  const animation = command.animation as { animationType?: unknown; startCoordinate?: unknown } | null | undefined;
+  if (String(animation?.animationType ?? '') !== 'bombExplosion') return;
+  const coordinate = animation?.startCoordinate;
+  if (!Array.isArray(coordinate) || coordinate.length < 2) return;
+  const x = coordinate[0];
+  const y = coordinate[1];
+  if (typeof x !== 'number' || typeof y !== 'number' || !Number.isInteger(x) || !Number.isInteger(y)) return;
+  if (x < 0 || x > 25 || y < 0 || y > 14) return;
+  pitch.explodeBomb(x, y);
+}
+
 let timeline: ReplayTimeline | null = null;
 let index = 0;
 const groundMarkTrack = new GroundMarkTrack();
@@ -927,6 +941,7 @@ async function show(): Promise<void> {
   applySkillBadges(state);
   pitch.present(state, jumped);
   launchThrow(command, jumped);
+  launchExplosion(command, jumped);
   shownGame = state;
   playerCards.refresh(state);
   showBlockDice(current.commands, index, state);
