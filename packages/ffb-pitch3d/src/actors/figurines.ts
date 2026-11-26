@@ -268,6 +268,8 @@ export class Figurines {
   /** Joueur dont l'action en cours contient « blitz ». Vide : pas d'éclair. */
   private blitzId = '';
   private lastTick = 0;
+  /** Sortie vers le banc retenue jusqu'à la fin des dés de blessure. */
+  private readonly pitchExits = new Map<string, PitchExit>();
 
   constructor(scene: Scene) {
     this.distractedTexture = this.iconLoader.load(DISTRACTED_URL);
@@ -321,7 +323,6 @@ export class Figurines {
         }
         actor.walkMovedAt = walkMovedAt;
         if (route) actor.route = route;
-        adoptPlace(actor, place);
         this.actors.set(place.id, actor);
         this.group.add(actor.root);
       } else {
@@ -329,14 +330,15 @@ export class Figurines {
         existing.groundY = place.y;
         existing.landingProne = place.prone;
         existing.landingStunned = place.stunned;
-        adoptPlace(existing, place);
       }
       const actor = this.actors.get(place.id);
       if (!actor) continue;
+      const waiting = this.parkExit(actor, place);
+      if (!waiting) adoptPlace(actor, place);
       paintPawnOpacity(actor.pawn, place.acted);
       paintReadyMarker(actor.readyMarker, actor.halo, place.active, place.selected, this.markerMaterial, this.selectedMarkerMaterial);
       actor.distracted.visible = place.distracted;
-      this.ensureInjury(actor, place.injury);
+      this.ensureInjury(actor, waiting && this.pitchExits.has(place.id) ? false : place.injury);
       this.applyBadges(actor);
     }
     for (const [id, actor] of this.actors) {
@@ -344,6 +346,7 @@ export class Figurines {
       actor.root.removeFromParent();
       disposeActor(actor);
       this.actors.delete(id);
+      this.pitchExits.delete(id);
     }
   }
 
@@ -371,8 +374,32 @@ export class Figurines {
     pose(actor, false, false);
   }
 
+  /**
+   * Retient la sortie vers le banc. `stay` impose la case du jet (un saut) ;
+   * sinon la figurine reste où elle est déjà visible.
+   */
+  holdPitchExit(id: string, key: string, until: number, stay?: { x: number; z: number }): void {
+    if (!id) return;
+    const existing = this.pitchExits.get(id);
+    if (existing?.key === key) return;
+    const actor = this.actors.get(id);
+    this.pitchExits.set(id, {
+      key,
+      until,
+      toX: Number.NaN,
+      toZ: Number.NaN,
+      stayX: stay?.x ?? actor?.root.position.x ?? Number.NaN,
+      stayZ: stay?.z ?? actor?.root.position.z ?? Number.NaN,
+    });
+  }
+
+  clearPitchExits(): void {
+    this.pitchExits.clear();
+  }
+
   /** Suit la marche. Une case dure le pas de lecture, la suivante enchaîne sans arrêt. */
   tick(now: number): void {
+    this.releaseExits(now);
     const wave = 0.5 - 0.5 * Math.cos((now / SELECTED_PULSE_MS) * Math.PI * 2);
     this.selectedMarkerMaterial.emissiveIntensity = SELECTED_GLOW_MIN + (SELECTED_GLOW_MAX - SELECTED_GLOW_MIN) * wave;
     this.haloMaterial.opacity = SELECTED_HALO_OPACITY_MIN + (SELECTED_HALO_OPACITY_MAX - SELECTED_HALO_OPACITY_MIN) * wave;
@@ -485,6 +512,56 @@ export class Figurines {
     for (const actor of this.actors.values()) this.applyBadges(actor);
   }
 
+  /**
+   * Le joueur quitte le terrain. Tant que les dés de blessure ne sont pas finis,
+   * il reste à terre sur sa case. `true` : la place est déjà appliquée.
+   */
+  private parkExit(actor: Actor, place: Placement): boolean {
+    const exit = this.pitchExits.get(place.id);
+    if (!exit || place.onPitch) return false;
+    if (Number.isNaN(exit.stayX)) {
+      exit.stayX = actor.root.position.x;
+      exit.stayZ = actor.root.position.z;
+    }
+    exit.toX = place.x;
+    exit.toZ = place.z;
+    actor.flight = null;
+    actor.route = null;
+    const now = performance.now();
+    if (now >= exit.until) {
+      this.pitchExits.delete(place.id);
+      this.beginExit(actor, exit, now);
+      return true;
+    }
+    actor.root.position.set(exit.stayX, place.y, exit.stayZ);
+    actor.targetX = exit.stayX;
+    actor.targetZ = exit.stayZ;
+    pose(actor, true, false);
+    return true;
+  }
+
+  private releaseExits(now: number): void {
+    for (const [id, exit] of this.pitchExits) {
+      if (now < exit.until) continue;
+      this.pitchExits.delete(id);
+      if (Number.isNaN(exit.toX)) continue;
+      const actor = this.actors.get(id);
+      if (!actor) continue;
+      this.beginExit(actor, exit, now);
+    }
+  }
+
+  private beginExit(actor: Actor, exit: PitchExit, now: number): void {
+    actor.flight = null;
+    actor.route = null;
+    if (!Number.isNaN(exit.stayX)) {
+      actor.root.position.x = exit.stayX;
+      actor.root.position.z = exit.stayZ;
+    }
+    pose(actor, false, true);
+    steerRoute(actor, exit.toX, exit.toZ, now);
+  }
+
   private applyBadges(actor: Actor): void {
     const urls = (this.badges.get(actor.id) ?? []).slice(0, 8);
     const key = urls.join('|');
@@ -551,6 +628,7 @@ export class Figurines {
   }
 
   dispose(): void {
+    this.pitchExits.clear();
     this.blitz.dispose();
     for (const actor of this.actors.values()) disposeActor(actor);
     this.actors.clear();
@@ -728,8 +806,18 @@ export class Figurines {
   }
 }
 
+interface PitchExit {
+  key: string;
+  until: number;
+  toX: number;
+  toZ: number;
+  stayX: number;
+  stayZ: number;
+}
+
 interface Placement {
   id: string;
+  onPitch: boolean;
   number: number;
   strength: number;
   race: string;
@@ -793,6 +881,7 @@ function placeTeam(out: Placement[], team: TeamJson | undefined, game: GameJson,
     const distracted = !lying && ((state & (FLAG_CONFUSED | FLAG_HYPNOTIZED)) !== 0);
     out.push({
       id: String(player.playerId),
+      onPitch,
       number: Number(player.playerNr) || 0,
       strength: Number(player.strength) || 3,
       race: String(team.race ?? ''),

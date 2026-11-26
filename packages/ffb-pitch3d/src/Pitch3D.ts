@@ -27,13 +27,14 @@ import { PitchNature } from './environment/nature';
 import { PitchBillboards } from './environment/billboards';
 import { clampRainSettings, DEFAULT_RAIN_SETTINGS, PitchRain, type RainSettings } from './environment/rain';
 import { RainSound } from './environment/rainSound';
+import { NatureSound } from './environment/natureSound';
 import { clampSnowSettings, DEFAULT_SNOW_SETTINGS, PitchSnow, type SnowSettings } from './environment/snow';
 import { setSnowCap } from './environment/snowCap';
 import { Figurines } from './actors/figurines';
 import { TackleZones } from './actors/tackleZones';
 import { PitchBall } from './actors/ball';
 import { PitchBomb } from './actors/bomb';
-import { SpectatorBombs } from './actors/spectatorBombs';
+import { SpectatorCrowd, type SpectatorEmote, type SpectatorState } from './actors/spectatorCrowd';
 import { PitchExplosion } from './actors/explosion';
 import { BlockDice, type BlockDiceSpec } from './actors/dice/dBlock';
 import { NumberDice, type NumberDiceSpec } from './actors/dice/d6';
@@ -74,9 +75,11 @@ export class Pitch3D {
   private lineup: GameJson | null = null;
   private ball: PitchBall | null = null;
   private bomb: PitchBomb | null = null;
-  private spectators: SpectatorBombs | null = null;
+  private spectators: SpectatorCrowd | null = null;
   private spectatorCount = 0;
   private spectatorNames: string[] = [];
+  private spectatorPose: SpectatorState = 'Idle';
+  private spectatorSelf = '';
   private explosion: PitchExplosion | null = null;
   private blockDice: BlockDice | null = null;
   private numberDice: NumberDice | null = null;
@@ -87,6 +90,7 @@ export class Pitch3D {
   private weather: WeatherKey | null = null;
   private rain: PitchRain | null = null;
   private rainSound: RainSound | null = null;
+  private natureSound: NatureSound | null = null;
   private rainSettings: RainSettings = { ...DEFAULT_RAIN_SETTINGS };
   private snow: PitchSnow | null = null;
   private snowSettings: SnowSettings = { ...DEFAULT_SNOW_SETTINGS };
@@ -190,13 +194,20 @@ export class Pitch3D {
     this.tackleZones = new TackleZones(scene);
     this.ball = new PitchBall(scene);
     this.bomb = new PitchBomb(scene);
-    this.spectators = new SpectatorBombs(scene);
-    this.spectators.sync(this.spectatorCount, this.spectatorNames);
+    this.spectators = new SpectatorCrowd(scene);
+    this.spectators.setSelf(this.spectatorSelf);
+    this.spectators.setState(this.spectatorPose);
+    const crowd = this.spectators.load().catch((error: unknown) => {
+      console.error('[pitch3d] figurine spectateur', error);
+    });
     this.explosion = new PitchExplosion(scene);
     this.blockDice = new BlockDice(scene);
     this.numberDice = new NumberDice(scene);
     this.groundMarks = new GroundMarks(scene);
-    await Promise.all([loadAtlases(anisotropy), this.ball.load(), this.bomb.load(), this.blockDice.load(anisotropy)]);
+    await Promise.all([loadAtlases(anisotropy), this.ball.load(), this.bomb.load(), this.blockDice.load(anisotropy), crowd]);
+    this.spectators.setSelf(this.spectatorSelf);
+    this.spectators.setState(this.spectatorPose);
+    this.spectators.sync(this.spectatorCount, this.spectatorNames);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(host);
@@ -207,6 +218,7 @@ export class Pitch3D {
     this.rain.apply(this.rainSettings);
     this.rainSound = new RainSound();
     this.rainSound.setParams(this.rainSettings);
+    this.natureSound = new NatureSound();
     this.snow = new PitchSnow(scene);
     this.snow.apply(this.snowSettings);
     this.weather = null;
@@ -215,6 +227,18 @@ export class Pitch3D {
     this.fpsStamp = performance.now();
     renderer.render(scene, camera);
     this.frame = requestAnimationFrame(this.animate);
+  }
+
+  /**
+   * Garde le joueur sur le terrain jusqu'à `until` : la sortie vers le banc attend
+   * la fin des dés de blessure. Le même `key` ne recule pas l'échéance.
+   */
+  holdPitchExit(playerId: string, key: string, until: number, stay?: { x: number; z: number }): void {
+    this.figurines?.holdPitchExit(playerId, key, until, stay);
+  }
+
+  clearPitchExits(): void {
+    this.figurines?.clearPitchExits();
   }
 
   /** Météo, figurines, ballon et bombe. Un état sans joueurs (bouton météo) ne retire personne. `cut` : un saut. */
@@ -311,7 +335,7 @@ export class Pitch3D {
     }
   }
 
-  /** Affiche le jet. Le même `key` met à jour la couleur et le dé choisi sans relancer. */
+  /** Affiche le jet. Le même `key` ne relance pas. Un choix de dé le garde encore 600 ms. */
   showBlockDice(spec: BlockDiceSpec): void {
     this.blockDice?.show(spec);
   }
@@ -320,7 +344,12 @@ export class Pitch3D {
     this.blockDice?.clear();
   }
 
-  /** Passage d'armure, puis jet de blessure. Le même `key` ne relance pas. */
+  /** `immediate` : un saut. Sinon les dés restent jusqu'au choix, puis 600 ms si un dé est retenu. */
+  releaseBlockDice(immediate: boolean): void {
+    this.blockDice?.release(immediate);
+  }
+
+  /** Un jet de plus. Le même `key` ne relance pas, et n'efface pas les jets encore affichés. */
   showNumberDice(spec: NumberDiceSpec): void {
     this.numberDice?.show(spec);
   }
@@ -329,7 +358,7 @@ export class Pitch3D {
     this.numberDice?.clear();
   }
 
-  /** `immediate` : un saut. Sinon le jet d'armure puis de blessure se termine avant de disparaître. */
+  /** `immediate` : un saut. Sinon chaque jet va au bout de ses 600 ms, relance comprise. */
   releaseNumberDice(immediate: boolean): void {
     this.numberDice?.release(immediate);
   }
@@ -345,7 +374,7 @@ export class Pitch3D {
   }
 
   /**
-   * Une figurine bombe par spectateur, derrière l'en-but away.
+   * Un personnage par spectateur, derrière l'en-but away.
    * Un nombre remet le compte. Un objet met à jour le compte, les noms, ou les deux.
    */
   setSpectators(count: number): void;
@@ -360,6 +389,27 @@ export class Pitch3D {
       else if (roster.names) this.spectatorCount = this.spectatorNames.length;
     }
     this.spectators?.sync(this.spectatorCount, this.spectatorNames);
+  }
+
+  /** Coach qui regarde. Seule sa figurine répond à la console. */
+  setSpectatorSelf(name: string): void {
+    this.spectatorSelf = name.trim();
+    this.spectators?.setSelf(this.spectatorSelf);
+  }
+
+  /** Pose de fond du coach local : repos, danse, ou mort. */
+  setSpectatorState(state: SpectatorState): void {
+    this.spectatorPose = state;
+    this.spectators?.setState(state);
+  }
+
+  /** Geste court du coach local, puis retour à sa pose. */
+  playSpectatorEmote(emote: SpectatorEmote): void {
+    this.spectators?.playEmote(emote);
+  }
+
+  spectatorState(): SpectatorState {
+    return this.spectators?.state() ?? this.spectatorPose;
   }
 
   /** Affiche ou masque les cases marquées, teintées selon le nombre de zones de tacle. */
@@ -521,6 +571,8 @@ export class Pitch3D {
     this.rain = null;
     this.rainSound?.dispose();
     this.rainSound = null;
+    this.natureSound?.dispose();
+    this.natureSound = null;
     this.snow?.dispose();
     this.snow = null;
     setSnowCap(0);
@@ -567,6 +619,7 @@ export class Pitch3D {
     const on = this.rainSettings.force || this.weather === 'rain';
     this.rain?.setVisible(on);
     this.rainSound?.setRaining(on);
+    this.natureSound?.setActive(this.weather === 'nice' && !this.rainSettings.force);
   }
 
   /** La neige tombe par blizzard, ou si la console l'a forcée. Le sol déjà couvert fond tout seul. */
@@ -641,6 +694,7 @@ export class Pitch3D {
     if (rainDt > 0) {
       this.snow?.tick(rainDt, this.camera.quaternion);
       this.rainSound?.tick(rainDt);
+      this.natureSound?.tick(rainDt);
     }
     setSnowCap(this.snow?.cap() ?? 0);
     this.paintLightning(flash);
@@ -785,10 +839,12 @@ export class Pitch3D {
   /** Le navigateur ne démarre l'audio qu'après un geste. */
   private onPointerDown = (): void => {
     this.rainSound?.unlock();
+    this.natureSound?.unlock();
   };
 
   private onKeyDown = (event: KeyboardEvent): void => {
     this.rainSound?.unlock();
+    this.natureSound?.unlock();
     if (typing(event.target)) return;
     const key = event.key.length === 1 ? event.key.toLowerCase() : '';
     if (!CAMERA_KEYS.has(key)) return;

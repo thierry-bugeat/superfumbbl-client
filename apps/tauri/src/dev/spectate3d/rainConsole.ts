@@ -91,8 +91,8 @@ function readRainSettings(): RainSettings {
     if (!raw) return { ...DEFAULT_RAIN_SETTINGS };
     const parsed = JSON.parse(raw) as Partial<RainSettings>;
     if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_RAIN_SETTINGS };
-    // L'ancien défaut, 70 %, partait dans le stockage dès qu'on touchait un curseur.
-    if (parsed.volume === 0.7) delete parsed.volume;
+    // Les anciens défauts, 70 % puis 10 %, partaient dans le stockage dès qu'on touchait un curseur.
+    if (parsed.volume === 0.7 || parsed.volume === 0.1) delete parsed.volume;
     return clampRainSettings(parsed);
   } catch {
     return { ...DEFAULT_RAIN_SETTINGS };

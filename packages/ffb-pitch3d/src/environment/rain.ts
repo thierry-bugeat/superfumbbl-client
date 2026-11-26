@@ -63,7 +63,7 @@ export const DEFAULT_RAIN_SETTINGS: RainSettings = {
   splash: 1,
   autoLightning: true,
   force: false,
-  volume: 0.1,
+  volume: 0.05,
 };
 
 export function clampRainSettings(value: Partial<RainSettings>, base: RainSettings = DEFAULT_RAIN_SETTINGS): RainSettings {

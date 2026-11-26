@@ -1,5 +1,5 @@
 import { d6FaceUrl, isD6FaceValue } from '@fumbbl40k/ffb-pitch/src/d6';
-import { MOVE_SQUARE_MS, Pitch3D, noteActingSide, type PitchDiagnostics } from '@fumbbl40k/ffb-pitch3d';
+import { MOVE_SQUARE_MS, Pitch3D, injuryRevealMs, noteActingSide, type PitchDiagnostics } from '@fumbbl40k/ffb-pitch3d';
 import type { GameJson, TeamJson, TurnDataJson } from '@fumbbl40k/ffb-protocol';
 import { terms } from '../../i18n/terms';
 import { crestDataUrl } from '../../game/teamCrests';
@@ -31,6 +31,9 @@ import { MATCHUP_DWELL_MS, matchupView, tvThousands, type MatchupSideView } from
 import { weatherBannersForStep, type WeatherBanner, type WeatherBannerKey } from './weatherBanner';
 import { mountRainConsole } from './rainConsole';
 import { mountSnowConsole } from './snowConsole';
+import { mountSpectatorConsole } from './spectatorConsole';
+import { playActionSounds, playTurnoverSound, silencePendingActionSounds } from './actionSounds';
+import { playBlitzSound } from './blitzSound';
 import { turnSideIsHome } from '../../game/blastinSecondBeat';
 import { formatTurnRemaining, gameClockStopped, readElapsedMs, resolveTurnElapsed, turnLimitMs } from './turnClock';
 
@@ -200,6 +203,7 @@ function mountConsole(): void {
   renderCoachChat([]);
   mountRainConsole(pitch);
   mountSnowConsole(pitch);
+  mountSpectatorConsole(pitch);
 }
 
 function showConsoleTab(tab: HTMLButtonElement): void {
@@ -898,6 +902,7 @@ function presentTurnoverBanner(cue: TurnoverBannerCue, generation: number): Prom
 
 async function show(): Promise<void> {
   const generation = ++seekGeneration;
+  silencePendingActionSounds();
   dismissWeatherBanner();
   dismissTurnoverBanner();
   dismissMatchup();
@@ -912,6 +917,7 @@ async function show(): Promise<void> {
     loggedTimeline = null;
     renderMatchLog([]);
     renderCoachChat([]);
+    playBlitzSound(null, true);
     pitch.clearBlockDice();
     pitch.clearGroundMarks();
     groundMarkTrack.reset();
@@ -956,13 +962,26 @@ async function show(): Promise<void> {
     ? t('spectate3d.status.command', { index, total: current.commands.length, id: command.netCommandId })
     : t('spectate3d.status.start', { total: current.commands.length });
   applySkillBadges(state);
+  const numberRoll = numberRollAt(current.commands, index, state);
+  if (jumped) pitch.clearPitchExits();
+  const injuryReveal = numberRoll ? injuryRevealMs(numberRoll) : null;
+  if (numberRoll && injuryReveal != null && numberRoll.playerId) {
+    pitch.holdPitchExit(
+      numberRoll.playerId,
+      numberRoll.key,
+      performance.now() + injuryReveal,
+      jumped ? numberRoll.anchor : undefined,
+    );
+  }
   pitch.present(state, jumped);
   launchThrow(command, jumped);
   launchExplosion(command, jumped);
+  playActionSounds(command, state.fieldModel?.weather, jumped);
+  playBlitzSound(state, jumped);
   shownGame = state;
   playerCards.refresh(state);
-  showBlockDice(current.commands, index, state);
-  showNumberDice(current.commands, index, state, jumped);
+  showBlockDice(current.commands, index, state, jumped);
+  showNumberDice(numberRoll, jumped);
   showGroundMarks(current.commands, index, state, jumped);
   const ballTraveling = consumeBallTravel(state, jumped);
   aimCamera(current.commands, index, state, command, false, ballTraveling);
@@ -996,6 +1015,7 @@ async function show(): Promise<void> {
   if (generation !== seekGeneration || !timeline) return;
   const turnover = current.takeTurnoverBanner();
   if (turnover) {
+    if (!jumped) playTurnoverSound();
     await presentTurnoverBanner(turnover, generation);
     if (generation !== seekGeneration || !timeline) return;
   }
@@ -1430,21 +1450,22 @@ function aimCamera(
   pitch.track(cameraFollow(game, command, { touchdown, block, traveling }));
 }
 
-function showNumberDice(commands: Parameters<typeof blockRollAt>[0], at: number, game: GameJson, jumped: boolean): void {
-  const roll = numberRollAt(commands, at, game);
+function showNumberDice(roll: ReturnType<typeof numberRollAt>, jumped: boolean): void {
   if (!roll) {
     pitch.releaseNumberDice(jumped);
     return;
   }
+  if (jumped) pitch.clearNumberDice();
   pitch.showNumberDice(roll);
 }
 
-function showBlockDice(commands: Parameters<typeof blockRollAt>[0], at: number, game: GameJson): void {
+function showBlockDice(commands: Parameters<typeof blockRollAt>[0], at: number, game: GameJson, jumped: boolean): void {
   const roll = blockRollAt(commands, at, game);
   if (!roll) {
-    pitch.clearBlockDice();
+    pitch.releaseBlockDice(jumped);
     return;
   }
+  if (jumped) pitch.clearBlockDice();
   const setting = blockDieSetting();
   pitch.showBlockDice({ ...roll, color: blockDiceColor(setting.surface, setting.family, roll.choosingTeamId, game) });
 }
@@ -1769,6 +1790,7 @@ if (pendingJnlp) {
   }
 } else if (Number.isInteger(launchGame) && launchGame > 0 && launchCoach) {
   watchLiveGame(launchGame, launchCoach, false);
+  pitch.setSpectatorSelf(launchCoach);
   // En direct, le socket est la seule source : son instantané de connexion bâtit la timeline et son
   // flux l'allonge. Le replay ne sert qu'à montrer le match quand même, sans le suivre.
   if (!spectateMode || !(await openLiveSocket(launchGame, launch))) await showDownloadedReplay();

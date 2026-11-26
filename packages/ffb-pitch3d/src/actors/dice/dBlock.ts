@@ -1,6 +1,8 @@
 /**
  * Dés de blocage, comme dans SpikeBowl : cube arrondi, symboles de l'atlas,
  * lancer puis pose sur la face tirée. La couleur du corps est choisie par l'appelant.
+ * Ils restent tant que le coach n'a pas choisi, au moins 600 ms une fois posés.
+ * Après le choix d'un dé, ils restent encore 600 ms.
  */
 import {
   AdditiveBlending,
@@ -27,6 +29,8 @@ const DIE_SIZE = 0.58;
 const SPACING = 0.78;
 const REST_Y = 1.65;
 const ROLL_MS = 650;
+/** Résultat posé : au moins ce délai, et encore ce délai après le choix d'un dé. */
+const HOLD_MS = 600;
 const UP = new Vector3(0, 1, 0);
 
 const FACES: { face: BlockFace; normal: Vector3 }[] = [
@@ -49,6 +53,8 @@ export interface BlockDiceSpec {
   color: number;
   /** Index du dé retenu, une fois le choix connu. */
   chosen: number | null;
+  /** Le dialogue de blocage est encore ouvert : aucun dé n'a été choisi, ni relance. */
+  awaitingChoice: boolean;
 }
 
 export class BlockDice {
@@ -57,10 +63,17 @@ export class BlockDice {
   private readonly bodyGeometry = new RoundedBoxGeometry(DIE_SIZE, DIE_SIZE, DIE_SIZE, 4, 0.06);
   private readonly faceGeometry = new PlaneGeometry(DIE_SIZE * 0.62, DIE_SIZE * 0.62);
   private key = '';
-  private mode: 'hidden' | 'rolling' | 'result' = 'hidden';
+  private mode: 'hidden' | 'rolling' | 'holding' = 'hidden';
   private color = 0x1c1c1c;
   private chosen: number | null = null;
+  private awaitingChoice = false;
   private rollStart = 0;
+  private settledAt = 0;
+  /** -1 : le dé vient d'être choisi, l'heure se note au tick. 0 : pas encore. */
+  private choiceAt = 0;
+  /** Le replay a quitté ce jet. Il part une fois les 600 ms écoulées. */
+  private released = false;
+  private pending: BlockDiceSpec | null = null;
   private readonly dice: Mesh[] = [];
   private halo: Group | null = null;
 
@@ -78,46 +91,57 @@ export class BlockDice {
   }
 
   show(spec: BlockDiceSpec): void {
-    this.group.position.set(spec.x, 0, spec.z);
-    this.color = spec.color;
-    this.chosen = spec.chosen;
-    if (spec.key === this.key && this.mode !== 'hidden') {
+    if (spec.key === this.key) {
+      if (this.mode === 'hidden') return;
+      this.color = spec.color;
+      this.awaitingChoice = spec.awaitingChoice;
+      this.released = false;
+      this.pending = null;
       this.paintBodies();
-      if (this.mode === 'result') this.applyChosen();
+      this.noteDie(spec.chosen);
+      if (this.mode === 'holding') this.applyChosen();
       return;
     }
-    this.key = spec.key;
-    this.rebuild(spec.faces);
-    this.mode = 'rolling';
-    this.rollStart = 0;
-    if (this.halo) this.halo.visible = false;
+    // Un autre jet attend que celui-ci ait fini son temps, sans le suivre.
+    if (this.mode !== 'hidden') {
+      this.pending = spec;
+      return;
+    }
+    this.begin(spec);
   }
 
   clear(): void {
+    this.pending = null;
+    this.released = false;
+    this.awaitingChoice = false;
     this.key = '';
-    this.mode = 'hidden';
     this.chosen = null;
-    this.dice.length = 0;
-    if (this.halo) this.halo.visible = false;
-    this.empty();
+    this.choiceAt = 0;
+    this.settledAt = 0;
+    this.retire();
+  }
+
+  /**
+   * Un saut retire les dés tout de suite.
+   * Sinon un jet encore en attente de choix reste, et un dé déjà choisi finit ses 600 ms.
+   */
+  release(immediate: boolean): void {
+    if (immediate) {
+      this.pending = null;
+      this.clear();
+      return;
+    }
+    if (this.mode === 'hidden') {
+      this.clear();
+      return;
+    }
+    this.awaitingChoice = false;
+    this.released = true;
   }
 
   tick(now: number): void {
-    if (this.mode !== 'rolling') return;
-    if (this.rollStart === 0) this.rollStart = now;
-    const progress = Math.min(1, (now - this.rollStart) / ROLL_MS);
-    for (const die of this.dice) {
-      const data = die.userData as { spinX: number; spinY: number; spinZ: number; jump: number };
-      die.rotation.x += data.spinX;
-      die.rotation.y += data.spinY;
-      die.rotation.z += data.spinZ;
-      die.position.y = REST_Y + 4 * progress * (1 - progress) * data.jump;
-    }
-    if (progress >= 1) {
-      this.mode = 'result';
-      this.layFlat();
-      this.applyChosen();
-    }
+    if (this.mode === 'rolling') this.tickRoll(now);
+    if (this.mode === 'holding') this.tickHold(now);
   }
 
   dispose(): void {
@@ -128,6 +152,76 @@ export class BlockDice {
     this.atlas?.dispose();
     this.atlas = null;
     this.group.removeFromParent();
+  }
+
+  private begin(spec: BlockDiceSpec): void {
+    this.pending = null;
+    this.released = false;
+    this.group.position.set(spec.x, 0, spec.z);
+    this.key = spec.key;
+    this.color = spec.color;
+    this.chosen = spec.chosen;
+    this.awaitingChoice = spec.awaitingChoice;
+    this.choiceAt = spec.chosen === null ? 0 : -1;
+    this.settledAt = 0;
+    this.rollStart = 0;
+    this.rebuild(spec.faces);
+    this.mode = 'rolling';
+    if (this.halo) this.halo.visible = false;
+  }
+
+  /** Le choix d'un dé arme le délai. Un même index ne le recommence pas. */
+  private noteDie(chosen: number | null): void {
+    if (chosen === null || chosen === this.chosen) return;
+    this.chosen = chosen;
+    this.choiceAt = -1;
+  }
+
+  private tickRoll(now: number): void {
+    if (this.rollStart === 0) this.rollStart = now;
+    const progress = Math.min(1, (now - this.rollStart) / ROLL_MS);
+    for (const die of this.dice) {
+      const data = die.userData as { spinX: number; spinY: number; spinZ: number; jump: number };
+      die.rotation.x += data.spinX;
+      die.rotation.y += data.spinY;
+      die.rotation.z += data.spinZ;
+      die.position.y = REST_Y + 4 * progress * (1 - progress) * data.jump;
+    }
+    if (progress < 1) return;
+    this.layFlat();
+    this.applyChosen();
+    this.mode = 'holding';
+    this.settledAt = now;
+  }
+
+  private tickHold(now: number): void {
+    if (this.choiceAt < 0) this.choiceAt = now;
+    const dieChosen = this.chosen !== null && this.choiceAt > 0;
+    if (dieChosen) {
+      if (now - Math.max(this.settledAt, this.choiceAt) >= HOLD_MS) this.advance();
+      return;
+    }
+    // Pas de dé choisi : on reste tant que le dialogue est ouvert.
+    // Une relance, ou la fin du jet, attend 600 ms de résultat posé.
+    if (this.awaitingChoice && !this.pending) return;
+    if (!this.released && !this.pending) return;
+    if (now - this.settledAt >= HOLD_MS) this.advance();
+  }
+
+  private advance(): void {
+    const next = this.pending;
+    this.pending = null;
+    this.released = false;
+    if (next) this.begin(next);
+    else this.retire();
+  }
+
+  /** Les dés partent. La clé reste, pour ne pas relancer le même jet au pas suivant. */
+  private retire(): void {
+    this.mode = 'hidden';
+    this.dice.length = 0;
+    if (this.halo) this.halo.visible = false;
+    this.empty();
   }
 
   private rebuild(values: readonly number[]): void {

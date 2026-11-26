@@ -32,7 +32,7 @@ export class RainSound {
   private readonly sources: AudioBufferSourceNode[] = [];
   private raining = false;
   private disposed = false;
-  private volume = 0.1;
+  private volume = 0.05;
   private amount = 0.74;
   private windAmount = 0.24;
   private gust = 1;
@@ -87,8 +87,8 @@ export class RainSound {
     if (!this.ctx || !this.gustGain || !this.raining) return;
     this.untilGust -= dt;
     if (this.untilGust <= 0) {
-      this.untilGust = 1.4 + Math.random() * 3.2;
-      const depth = 0.05 + this.windAmount * 0.28;
+      this.untilGust = 2.2 + Math.random() * 4.4;
+      const depth = 0.02 + this.windAmount * 0.1;
       this.gustTarget = 1 - depth + Math.random() * depth * 2;
     }
     const follow = 1 - Math.exp(-dt * 1.3);
@@ -159,8 +159,8 @@ export class RainSound {
 
     bedGain.connect(rainBus);
     sheetGain.connect(gustGain);
-    dropGain.connect(gustGain);
-    closeGain.connect(gustGain);
+    dropGain.connect(rainBus);
+    closeGain.connect(rainBus);
     gustGain.connect(rainBus);
     rainBus.connect(master);
     thunderBus.connect(master);
@@ -201,10 +201,10 @@ export class RainSound {
     const now = ctx.currentTime;
     const tau = 0.18;
     this.master.gain.setTargetAtTime(this.volume, now, 0.04);
-    this.bedGain.gain.setTargetAtTime(0.34 + a * 0.4, now, tau);
-    this.sheetGain.gain.setTargetAtTime((0.28 + a * 0.55) * (1 + wind * 0.35), now, tau);
-    this.dropGain.gain.setTargetAtTime(0.1 + a * 0.48, now, tau);
-    this.closeGain.gain.setTargetAtTime(0.04 + a * a * 0.22, now, tau);
+    this.bedGain.gain.setTargetAtTime(0.2 + a * 0.26, now, tau);
+    this.sheetGain.gain.setTargetAtTime((0.12 + a * 0.22) * (1 + wind * 0.12), now, tau);
+    this.dropGain.gain.setTargetAtTime(0.46 + a * 0.7, now, tau);
+    this.closeGain.gain.setTargetAtTime(0.32 + a * a * 0.55, now, tau);
   }
 
   private fadeRain(level: number): void {
@@ -331,25 +331,25 @@ function fillSheet(left: Float32Array, right: Float32Array, sampleRate: number):
     lowR += (xR - lowR) * upper;
     bandL += (lowL - bandL) * lower;
     bandR += (lowR - bandR) * lower;
-    flutterL += (0.82 + Math.random() * 0.36 - flutterL) * 0.0015;
-    flutterR += (0.82 + Math.random() * 0.36 - flutterR) * 0.0015;
-    left[i] = ((left[i] ?? 0) + (lowL - bandL) * 0.08) * flutterL;
-    right[i] = ((right[i] ?? 0) + (lowR - bandR) * 0.08) * flutterR;
+    flutterL += (0.96 + Math.random() * 0.08 - flutterL) * 0.0005;
+    flutterR += (0.96 + Math.random() * 0.08 - flutterR) * 0.0005;
+    left[i] = ((left[i] ?? 0) + (lowL - bandL) * 0.03) * flutterL;
+    right[i] = ((right[i] ?? 0) + (lowR - bandR) * 0.03) * flutterR;
   }
 }
 
 /**
- * Impacts. `close` : quelques gouttes plus lourdes, comme sur une vitre.
- * Les autres font le crépitement fin, assez dense pour ne pas sonner comme une friture.
+ * Impacts. `close` : les gouttes proches, assez lourdes pour se détacher.
+ * Les autres sont plus nombreuses, mais chacune reste un choc, pas un sifflement.
  */
 function fillDrops(left: Float32Array, right: Float32Array, sampleRate: number, close: boolean): void {
   const seconds = left.length / sampleRate;
-  const count = Math.floor(seconds * (close ? 3.2 : 200));
+  const count = Math.floor(seconds * (close ? 8 : 42));
   for (let d = 0; d < count; d++) {
-    const durSec = close ? 0.016 + Math.random() * 0.03 : 0.004 + Math.random() * 0.009;
+    const durSec = close ? 0.02 + Math.random() * 0.034 : 0.01 + Math.random() * 0.016;
     const dur = Math.max(8, Math.floor(durSec * sampleRate));
     const start = Math.floor(Math.random() * left.length);
-    const freq = close ? 450 + Math.random() * 1100 : 1600 + Math.random() * 4200;
+    const freq = close ? 380 + Math.random() * 900 : 700 + Math.random() * 1600;
     const amp = Math.pow(Math.random(), close ? 0.55 : 1.45) * (close ? 1.15 : 0.55);
     const pan = Math.random();
     const lGain = Math.cos(pan * Math.PI * 0.5);

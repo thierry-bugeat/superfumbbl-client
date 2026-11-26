@@ -25,9 +25,14 @@ declare module 'three/addons/geometries/RoundedBoxGeometry.js' {
 }
 
 declare module 'three/addons/loaders/GLTFLoader.js' {
-  import { Group, Loader, LoadingManager } from 'three';
+  import { AnimationClip, Group, Loader, LoadingManager } from 'three';
   export class GLTFLoader extends Loader {
     constructor(manager?: LoadingManager);
-    loadAsync(url: string): Promise<{ scene: Group }>;
+    loadAsync(url: string): Promise<{ scene: Group; animations: AnimationClip[] }>;
   }
+}
+
+declare module 'three/addons/utils/SkeletonUtils.js' {
+  import { Object3D } from 'three';
+  export function clone(source: Object3D): Object3D;
 }

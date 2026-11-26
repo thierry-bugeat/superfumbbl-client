@@ -2,6 +2,7 @@ import type { GameJson } from '@fumbbl40k/ffb-protocol';
 import { BLOCK_DIE_SURFACE_COLOURS, resolveBlockDieSurface } from '@fumbbl40k/ffb-pitch/src/blockDieSurface';
 import { squareToWorld } from '@fumbbl40k/ffb-pitch3d';
 import type { ReplayCommand } from '../../game/replay/replayController';
+import { playerSquareAt } from './rollSquare';
 
 export interface BlockRollView {
   key: string;
@@ -10,6 +11,8 @@ export interface BlockRollView {
   faces: number[];
   chosen: number | null;
   choosingTeamId: string | null;
+  /** Le coach n'a pas encore choisi un dé, ni de relancer. */
+  awaitingChoice: boolean;
 }
 
 /** Rapports qui prolongent le blocage en cours, après le jet. */
@@ -29,11 +32,20 @@ const CONTINUES = new Set([
 
 const SCAN = 80;
 
+/** Dialogues pendant lesquels les dés restent, le coach n'ayant pas encore tranché. */
+const BLOCK_CHOICE_DIALOGS = new Set([
+  'blockRoll',
+  'blockRollProperties',
+  'blockRollPartialReRoll',
+  'reRollBlockForTargetsProperties',
+]);
+
 /**
  * Le jet visible à cette position du replay. On remonte depuis la commande
  * courante jusqu'au `blockRoll` (ou sa relance), sans dépasser le début du bloc.
  */
 export function blockRollAt(commands: readonly ReplayCommand[], index: number, game: GameJson): BlockRollView | null {
+  const awaitingChoice = blockChoiceOpen(game);
   let chosen: number | null = null;
   const start = Math.max(0, index - 1);
   const stop = Math.max(0, start - SCAN);
@@ -45,10 +57,12 @@ export function blockRollAt(commands: readonly ReplayCommand[], index: number, g
     if (roll) {
       const same = reports.find((report) => report.reportId === 'blockChoice');
       const picked = chosen ?? diceIndex(same);
-      return viewOf(roll, i, picked, defenderId(roll) || defenderBehind(commands, i, stop), game);
+      return viewOf(commands, roll, i, picked, defenderId(roll) || defenderBehind(commands, i, stop), game, awaitingChoice);
     }
     const choice = reports.find((report) => report.reportId === 'blockChoice');
     if (choice && chosen === null) chosen = diceIndex(choice);
+    // Le dialogue est ouvert, ou cette commande est le choix : on remonte jusqu'au jet.
+    if (awaitingChoice || choice) continue;
     if (reports.some((report) => report.reportId === 'block')) return null;
     if (reports.some((report) => !CONTINUES.has(String(report.reportId)))) return null;
   }
@@ -64,10 +78,18 @@ export function blockDiceColor(setting: unknown, family: unknown, choosingTeamId
   return Number.parseInt(BLOCK_DIE_SURFACE_COLOURS[surface].fill.slice(1), 16);
 }
 
-function viewOf(report: Record<string, unknown>, commandIndex: number, chosen: number | null, defender: string, game: GameJson): BlockRollView | null {
+function viewOf(
+  commands: readonly ReplayCommand[],
+  report: Record<string, unknown>,
+  commandIndex: number,
+  chosen: number | null,
+  defender: string,
+  game: GameJson,
+  awaitingChoice: boolean,
+): BlockRollView | null {
   const faces = facesOf(report.blockRoll);
   if (!faces) return null;
-  const point = defenderPoint(game, defender);
+  const point = defenderPoint(commands, commandIndex, game, defender);
   const picked = chosen !== null && chosen >= 0 && chosen < faces.length ? chosen : null;
   return {
     key: `${commandIndex}:${faces.join(',')}:${defender}`,
@@ -76,7 +98,15 @@ function viewOf(report: Record<string, unknown>, commandIndex: number, chosen: n
     faces,
     chosen: picked,
     choosingTeamId: typeof report.choosingTeamId === 'string' ? report.choosingTeamId : null,
+    awaitingChoice,
   };
+}
+
+function blockChoiceOpen(game: GameJson): boolean {
+  const dialog = game.dialogParameter;
+  if (!dialog || typeof dialog !== 'object') return false;
+  const id = dialog.dialogId;
+  return typeof id === 'string' && BLOCK_CHOICE_DIALOGS.has(id);
 }
 
 function diceIndex(report: Record<string, unknown> | undefined): number | null {
@@ -104,13 +134,15 @@ function facesOf(value: unknown): number[] | null {
   return faces.length > 0 ? faces : null;
 }
 
-function defenderPoint(game: GameJson, playerId: string): { x: number; z: number } {
-  const data = game.fieldModel?.playerDataArray?.find((player) => player.playerId === playerId);
-  const coordinate = data?.playerCoordinate;
-  if (coordinate && coordinate[0] >= 0 && coordinate[0] <= 25 && coordinate[1] >= 0 && coordinate[1] <= 14) {
-    return squareToWorld(coordinate[0], coordinate[1]);
-  }
-  return { x: 0, z: 0 };
+function defenderPoint(
+  commands: readonly ReplayCommand[],
+  commandIndex: number,
+  game: GameJson,
+  playerId: string,
+): { x: number; z: number } {
+  const coordinate = playerSquareAt(commands, commandIndex, playerId, game);
+  if (!coordinate) return { x: 0, z: 0 };
+  return squareToWorld(coordinate[0], coordinate[1]);
 }
 
 function reportsOf(command: ReplayCommand | undefined): Record<string, unknown>[] {

@@ -2,6 +2,7 @@ import type { GameJson } from '@fumbbl40k/ffb-protocol';
 import { squareToWorld } from '@fumbbl40k/ffb-pitch3d';
 import type { NumberDiceSpec } from '@fumbbl40k/ffb-pitch3d';
 import type { ReplayCommand } from '../../game/replay/replayController';
+import { playerSquareAt } from './rollSquare';
 
 /** Rapports qui suivent un jet sans en être un nouveau. */
 const AFTERMATH = new Set([
@@ -42,17 +43,22 @@ export function numberRollAt(commands: readonly ReplayCommand[], index: number, 
     const reports = reportsOf(commands[i]);
     if (reports.length === 0) continue;
     const injury = reports.find((report) => report.reportId === 'injury' && (pair(report.armorRoll) || pair(report.injuryRoll)));
-    if (injury) return injuryView(injury, i, game);
+    if (injury) return injuryView(commands, injury, i, game);
     const actions = reports.filter((report) => ACTION_ROLLS.has(String(report.reportId)) && die(report.roll) !== null);
-    if (actions.length > 0) return actionView(actions, i, game);
+    if (actions.length > 0) return actionView(commands, actions, i, game);
     const pickup = [...reports].reverse().find((report) => report.reportId === 'pickUpRoll' && die(report.roll) !== null);
-    if (pickup) return pickupView(pickup, i, game);
+    if (pickup) return pickupView(commands, pickup, i, game);
     if (reports.some((report) => !AFTERMATH.has(String(report.reportId)))) return null;
   }
   return null;
 }
 
-function actionView(reports: readonly Record<string, unknown>[], commandIndex: number, game: GameJson): NumberDiceSpec | null {
+function actionView(
+  commands: readonly ReplayCommand[],
+  reports: readonly Record<string, unknown>[],
+  commandIndex: number,
+  game: GameJson,
+): NumberDiceSpec | null {
   const rolls = reports
     .map((report) => die(report.roll))
     .filter((value): value is number => value !== null)
@@ -62,7 +68,7 @@ function actionView(reports: readonly Record<string, unknown>[], commandIndex: n
   const playerId = typeof last?.playerId === 'string' && last.playerId
     ? last.playerId
     : actingPlayerId(game);
-  const point = besidePlayer(game, playerId);
+  const point = besidePlayer(commands, commandIndex, game, playerId);
   const ids = reports.map((report) => String(report.reportId)).join('+');
   return {
     key: `${commandIndex}:${ids}:${rolls.map((roll) => roll[0]).join('.')}:${playerId}`,
@@ -72,11 +78,16 @@ function actionView(reports: readonly Record<string, unknown>[], commandIndex: n
   };
 }
 
-function pickupView(report: Record<string, unknown>, commandIndex: number, game: GameJson): NumberDiceSpec | null {
+function pickupView(
+  commands: readonly ReplayCommand[],
+  report: Record<string, unknown>,
+  commandIndex: number,
+  game: GameJson,
+): NumberDiceSpec | null {
   const value = die(report.roll);
   if (value === null) return null;
   const playerId = typeof report.playerId === 'string' ? report.playerId : '';
-  const point = besidePlayer(game, playerId);
+  const point = besidePlayer(commands, commandIndex, game, playerId);
   return {
     key: `${commandIndex}:pickup:${value}:${playerId}`,
     x: point.x,
@@ -85,21 +96,40 @@ function pickupView(report: Record<string, unknown>, commandIndex: number, game:
   };
 }
 
-function injuryView(report: Record<string, unknown>, commandIndex: number, game: GameJson): NumberDiceSpec | null {
+function injuryView(
+  commands: readonly ReplayCommand[],
+  report: Record<string, unknown>,
+  commandIndex: number,
+  game: GameJson,
+): NumberDiceSpec | null {
   const armour = pair(report.armorRoll);
   const broken = report.armorBroken !== false;
-  const injury = broken ? pair(report.injuryRoll) : null;
-  const rolls = [armour, injury].filter((roll): roll is [number, number] => roll !== null);
+  const wound = broken ? pair(report.injuryRoll) : null;
+  const rolls: [number, number][] = [];
+  const injury: boolean[] = [];
+  if (armour) {
+    rolls.push(armour);
+    injury.push(false);
+  }
+  if (wound) {
+    rolls.push(wound);
+    injury.push(true);
+  }
   if (rolls.length === 0) return null;
   const defender = typeof report.defenderId === 'string' ? report.defenderId
     : typeof report.playerId === 'string' ? report.playerId
     : '';
-  const point = besidePlayer(game, defender);
+  const square = playerSquareAt(commands, commandIndex, defender, game);
+  const point = besidePlayer(commands, commandIndex, game, defender);
+  const anchor = square ? squareToWorld(square[0], square[1]) : null;
   return {
     key: `${commandIndex}:${rolls.map((roll) => roll.join('+')).join('|')}:${defender}`,
     x: point.x,
     z: point.z,
     rolls,
+    injury,
+    playerId: defender,
+    ...(anchor ? { anchor: { x: anchor.x, z: anchor.z } } : {}),
   };
 }
 
@@ -120,16 +150,18 @@ function actingPlayerId(game: GameJson): string {
   return typeof playerId === 'string' ? playerId : '';
 }
 
-/** À côté du joueur, pour laisser voir les dés de bloc posés sur sa case. */
-function besidePlayer(game: GameJson, playerId: string): { x: number; z: number } {
-  const data = game.fieldModel?.playerDataArray?.find((player) => player.playerId === playerId);
-  const coordinate = data?.playerCoordinate;
-  if (coordinate && coordinate[0] >= 0 && coordinate[0] <= 25 && coordinate[1] >= 0 && coordinate[1] <= 14) {
-    const point = squareToWorld(coordinate[0], coordinate[1]);
-    const shift = coordinate[0] >= 22 ? -0.95 : 0.95;
-    return { x: point.x + shift, z: point.z };
-  }
-  return { x: 0, z: 0 };
+/** À côté de la case du jet, pour laisser voir les dés de bloc posés dessus. */
+function besidePlayer(
+  commands: readonly ReplayCommand[],
+  commandIndex: number,
+  game: GameJson,
+  playerId: string,
+): { x: number; z: number } {
+  const coordinate = playerSquareAt(commands, commandIndex, playerId, game);
+  if (!coordinate) return { x: 0, z: 0 };
+  const point = squareToWorld(coordinate[0], coordinate[1]);
+  const shift = coordinate[0] >= 22 ? -0.95 : 0.95;
+  return { x: point.x + shift, z: point.z };
 }
 
 function reportsOf(command: ReplayCommand | undefined): Record<string, unknown>[] {
