@@ -20,7 +20,13 @@ import { CoachChat, type CoachChatLine } from './coachChat';
 import { MatchLog } from './matchLog';
 import { renderChatEmoji } from '../../game/chatEmoji';
 import { t } from '../../i18n';
-import { SPECTATE3D_RETURN_MESSAGE, takePendingSpectate3dJnlp } from '../../game/spectate3dSession';
+import {
+  SPECTATE3D_FULLSCREEN_QUERY_MESSAGE,
+  SPECTATE3D_RETURN_MESSAGE,
+  SPECTATE3D_TOGGLE_FULLSCREEN_MESSAGE,
+  isSpectate3dFullscreenStateMessage,
+  takePendingSpectate3dJnlp,
+} from '../../game/spectate3dSession';
 import { applyClientLanguage, applySpectate3dCopy } from './locale';
 import { activationCursors, activationSkipTarget, type ReplayCommand } from '../../game/replay/replayController';
 import { LiveSpectator } from './liveSpectator';
@@ -110,8 +116,11 @@ function mountFullscreen(): void {
   const label = button?.querySelector('span');
   if (!button || !icon || !label) return;
 
+  const embedded = window.parent !== window;
+  let parentFullscreen = false;
+
   const sync = (): void => {
-    const active = document.fullscreenElement !== null;
+    const active = embedded ? parentFullscreen : document.fullscreenElement !== null;
     const text = active ? t('spectate3d.fullscreen.leave') : t('spectate3d.fullscreen.enter');
     icon.src = active ? FULLSCREEN_EXIT_ICON : FULLSCREEN_ENTER_ICON;
     label.textContent = text;
@@ -120,12 +129,29 @@ function mountFullscreen(): void {
   };
 
   button.addEventListener('click', () => {
+    if (embedded) {
+      window.parent.postMessage(SPECTATE3D_TOGGLE_FULLSCREEN_MESSAGE, window.location.origin);
+      return;
+    }
     const toggle = document.fullscreenElement
       ? document.exitFullscreen()
       : document.documentElement.requestFullscreen();
     toggle.then(sync).catch(() => {});
   });
-  document.addEventListener('fullscreenchange', sync);
+
+  if (embedded) {
+    window.addEventListener('message', (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.source !== window.parent) return;
+      if (!isSpectate3dFullscreenStateMessage(event.data)) return;
+      parentFullscreen = event.data.active;
+      sync();
+    });
+    // The shell's load-time push arrives during pitch.init, before this listener exists.
+    window.parent.postMessage(SPECTATE3D_FULLSCREEN_QUERY_MESSAGE, window.location.origin);
+  } else {
+    document.addEventListener('fullscreenchange', sync);
+  }
   sync();
 }
 

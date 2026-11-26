@@ -5679,7 +5679,13 @@ onBeforeUnmount(() => {
     <ClientTour :host="clientTourHost" :should-start="clientTourShouldStart" :suspended="clientTourSuspended" :in-game="!!gameStore.game.value" :demo-game="!!gameStore.state.demoMode"
       :game-menu-open="ui.gameMenuOpen" :settings-open="ui.settingsOpen" :twitch-url="twitchChannelUrl"
       :colorblind-filter="colorblindFilterStyle?.filter" />
-    <Spectate3dFrame v-if="spectate3dUrl" :src="spectate3dUrl" @leave="leaveSpectate3d" />
+    <Spectate3dFrame
+      v-if="spectate3dUrl"
+      :src="spectate3dUrl"
+      :fullscreen="fullscreen"
+      @leave="leaveSpectate3d"
+      @toggle-fullscreen="toggleFullscreen"
+    />
   </main>
   <BetaLaunchSplash v-else-if="betaSplashOpen" @dismiss="betaSplashOpen = false" />
   <div v-else-if="introOpen" class="intro-splash" role="dialog" :aria-label="$t('introSplash.superFumbblIntro')" @click="finishIntro">

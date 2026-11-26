@@ -3,6 +3,28 @@ import { ref } from 'vue';
 /** The 3D page posts this to its parent when Return to Menu is confirmed. */
 export const SPECTATE3D_RETURN_MESSAGE = 'superfumbbl:spectate3d-return-to-menu';
 
+/** The 3D page posts this so the shell toggles its own (native) fullscreen. */
+export const SPECTATE3D_TOGGLE_FULLSCREEN_MESSAGE = 'superfumbbl:spectate3d-toggle-fullscreen';
+
+/** The 3D page asks for the shell fullscreen state once it can receive it. */
+export const SPECTATE3D_FULLSCREEN_QUERY_MESSAGE = 'superfumbbl:spectate3d-fullscreen-query';
+
+/** Parent → iframe: keep the 3D fullscreen button in sync with the shell. */
+export const SPECTATE3D_FULLSCREEN_STATE_MESSAGE = 'superfumbbl:spectate3d-fullscreen-state';
+
+export type Spectate3dFullscreenStateMessage = {
+  type: typeof SPECTATE3D_FULLSCREEN_STATE_MESSAGE;
+  active: boolean;
+};
+
+export function isSpectate3dFullscreenStateMessage(
+  data: unknown,
+): data is Spectate3dFullscreenStateMessage {
+  if (!data || typeof data !== 'object') return false;
+  const message = data as Spectate3dFullscreenStateMessage;
+  return message.type === SPECTATE3D_FULLSCREEN_STATE_MESSAGE && typeof message.active === 'boolean';
+}
+
 /** Full-screen 3D replay kept over the shell, so leaving it does not relaunch the client. */
 export const spectate3dUrl = ref<string | null>(null);
 
