@@ -246,7 +246,7 @@ export class Pitch3D {
     const key = pitchWeatherKey(game.fieldModel?.weather);
     if (key !== this.weather) this.presentWeather(key);
     if (game.fieldModel?.playerDataArray) {
-      this.figurines?.sync(game, this.surfaceY);
+      this.figurines?.sync(game, this.surfaceY, cut);
       this.lineup = game;
       if (this.tackleZonesOn) this.tackleZones?.sync(game);
     }
@@ -256,6 +256,15 @@ export class Pitch3D {
     if (game.fieldModel?.playerDataArray || (game.fieldModel && 'bombCoordinate' in game.fieldModel)) {
       this.bomb?.sync(game, cut);
     }
+  }
+
+  /**
+   * Prolonge la marche si cette case est la voisine de celle déjà visée.
+   * La commande qui l'affichera plus tard ne relance pas le pas.
+   */
+  extendWalk(playerId: string, squareX: number, squareY: number): void {
+    const world = squareToWorld(squareX, squareY);
+    this.figurines?.extendWalk(playerId, world.x, world.z);
   }
 
   /** Lancer ou botté : la parabole part tout de suite vers la case annoncée. */

@@ -1000,6 +1000,7 @@ async function show(): Promise<void> {
     );
   }
   pitch.present(state, jumped);
+  if (!jumped && (playing || followingLive)) seedUpcomingStep();
   launchThrow(command, jumped);
   launchExplosion(command, jumped);
   playActionSounds(command, state.fieldModel?.weather, jumped);
@@ -1102,6 +1103,11 @@ function step(next: number): void {
 const playButton = document.querySelector<HTMLButtonElement>('#play');
 /** Durée d'une commande à l'écran. C'est aussi la durée d'une case : la suivante part sans arrêt. */
 const STEP_MS = MOVE_SQUARE_MS;
+/**
+ * La case d'après est accrochée avant le pied posé. Le direct peut livrer
+ * cette case pendant l'attente : on réessaie un peu avant l'échéance.
+ */
+const CHAIN_LEAD_MS = 80;
 let playing = false;
 let playTimer = 0;
 let playGeneration = 0;
@@ -1248,6 +1254,52 @@ async function runCatchUp(): Promise<void> {
   }
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => { window.setTimeout(resolve, ms); });
+}
+
+const STANDING_BASE = 0x01;
+
+function commandChanges(command: ReplayCommand | undefined): { id: string; key: string; value: unknown }[] {
+  const list = command?.modelChangeList;
+  if (!list || typeof list !== 'object') return [];
+  const changes = (list as { modelChangeArray?: unknown }).modelChangeArray;
+  if (!Array.isArray(changes)) return [];
+  return changes.flatMap((change) => {
+    if (!change || typeof change !== 'object') return [];
+    const id = (change as { modelChangeId?: unknown }).modelChangeId;
+    const key = (change as { modelChangeKey?: unknown }).modelChangeKey;
+    if (typeof id !== 'string' || typeof key !== 'string' || !key) return [];
+    return [{ id, key, value: (change as { modelChangeValue?: unknown }).modelChangeValue }];
+  });
+}
+
+/**
+ * La commande suivante est déjà connue : si elle avance d'une case, la marche
+ * l'emprunte tout de suite. Le pied ne se pose pas en attendant le timer.
+ * Une chute ou une sortie de terrain reste sur la commande qui l'affiche.
+ */
+function seedUpcomingStep(): void {
+  const changes = commandChanges(timeline?.commands[index]);
+  const halted = new Set<string>();
+  for (const change of changes) {
+    if (change.id === 'fieldModelRemovePlayer') halted.add(change.key);
+    if (change.id !== 'fieldModelSetPlayerState') continue;
+    const state = Number(change.value);
+    if (!Number.isFinite(state)) continue;
+    if ((state & 0xff) !== STANDING_BASE) halted.add(change.key);
+  }
+  for (const change of changes) {
+    if (change.id !== 'fieldModelSetPlayerCoordinate' || halted.has(change.key)) continue;
+    if (!Array.isArray(change.value) || change.value.length < 2) continue;
+    const x = change.value[0];
+    const y = change.value[1];
+    if (typeof x !== 'number' || typeof y !== 'number') continue;
+    if (x < 0 || x > 25 || y < 0 || y > 14) continue;
+    pitch.extendWalk(change.key, x, y);
+  }
+}
+
 async function catchUp(generation: number): Promise<void> {
   let due = performance.now();
   while (timeline && generation === followGeneration && followingLive && !playing) {
@@ -1261,12 +1313,21 @@ async function catchUp(generation: number): Promise<void> {
     index += 1;
     await show();
     if (generation !== followGeneration || !followingLive || playing) return;
-    // Le serveur pousse les cases d'un déplacement en rafale. On les espace du pas de marche :
-    // chaque case est traversée, et la suivante part sans que la figurine s'arrête.
+    // Le serveur pousse les cases d'un déplacement en rafale. On les espace du pas de marche.
+    // La case d'après est déjà sur le trajet : arriver au centre ne coupe pas le pas.
     due += STEP_MS;
-    const wait = due - performance.now();
-    if (wait > 0) await new Promise((resolve) => window.setTimeout(resolve, wait));
-    else due = performance.now();
+    const now = performance.now();
+    if (due <= now) {
+      due = now;
+      seedUpcomingStep();
+      continue;
+    }
+    const leadWait = due - CHAIN_LEAD_MS - now;
+    if (leadWait > 0) await delay(leadWait);
+    if (generation !== followGeneration || !followingLive || playing) return;
+    seedUpcomingStep();
+    const rest = due - performance.now();
+    if (rest > 0) await delay(rest);
   }
 }
 

@@ -103,12 +103,15 @@ const MOVE_SPEED = 6;
  * et le segment d'après prend le relais sans repasser par l'arrêt.
  */
 export const MOVE_SQUARE_MS = 220;
-/** La commande peut tomber une ou deux images après la case : on l'enchaîne encore. */
-const CHAIN_LATE_MS = 32;
+/**
+ * La commande suivante peut tomber après le pied posé : on l'enchaîne encore,
+ * sans sauter dans le segment (l'horloge repart de maintenant).
+ */
+const CHAIN_LATE_MS = 160;
 const SAME_POINT = 0.05;
 const KING_STEP = TILE_SIZE + 0.05;
 /** Le cycle de pas ne revient pas à la pose immobile entre deux cases. */
-const WALK_HOLD_MS = 48;
+const WALK_HOLD_MS = 160;
 /** Cinq images par seconde : à 10, le cycle défile avant qu'on voie le pas. */
 const WALK_FRAME_MS = 200;
 
@@ -139,6 +142,38 @@ function kingDistance(ax: number, az: number, bx: number, bz: number): number {
   return Math.max(Math.abs(ax - bx), Math.abs(az - bz));
 }
 
+function samePoint(ax: number, az: number, bx: number, bz: number): boolean {
+  return Math.hypot(ax - bx, az - bz) <= SAME_POINT;
+}
+
+function hasPoint(points: readonly RoutePoint[], x: number, z: number): boolean {
+  return points.some((point) => samePoint(point.x, point.z, x, z));
+}
+
+/**
+ * Ajoute la case voisine au trajet en cours. La vitesse reste celle du premier pas.
+ * Une case déjà prévue ne change rien : la commande qui l'affiche ne relance pas la marche.
+ * Un saut plus long, ou une marche déjà finie depuis trop longtemps, ne s'enchaîne pas.
+ */
+function extendChain(actor: Actor, x: number, z: number, now: number): boolean {
+  const route = actor.route;
+  if (!route?.chain || actor.flight) return false;
+  if (hasPoint(route.points, x, z)) return false;
+  const last = route.points[route.points.length - 1];
+  if (!last || kingDistance(last.x, last.z, x, z) > KING_STEP) return false;
+  const segments = route.points.length - 1;
+  const idle = now - route.start - segments * route.segmentMs;
+  if (idle > CHAIN_LATE_MS) return false;
+  if (segments === 0 || idle > 0) {
+    route.points = [last, { x, z }];
+    route.start = now;
+    route.segmentMs = MOVE_SQUARE_MS;
+    return true;
+  }
+  route.points.push({ x, z });
+  return true;
+}
+
 /**
  * Une case voisine s'ajoute au trajet en cours. La vitesse reste celle du premier pas :
  * on ne revient pas au centre pour redémarrer. Un saut plus long repart de la position visible.
@@ -146,21 +181,13 @@ function kingDistance(ax: number, az: number, bx: number, bz: number): number {
 function steerRoute(actor: Actor, x: number, z: number, now: number): void {
   const route = actor.route;
   const last = route?.points[route.points.length - 1];
-  if (last && Math.hypot(last.x - x, last.z - z) <= SAME_POINT) return;
-
-  if (route?.chain && last) {
-    const segments = route.points.length - 1;
-    const idle = now - route.start - segments * route.segmentMs;
-    const king = kingDistance(last.x, last.z, x, z);
-    if (idle <= CHAIN_LATE_MS && king <= KING_STEP) {
-      route.points.push({ x, z });
-      return;
-    }
-  }
+  if (last && samePoint(last.x, last.z, x, z)) return;
+  if (route?.chain && hasPoint(route.points, x, z)) return;
+  if (extendChain(actor, x, z, now)) return;
 
   const fromX = actor.root.position.x;
   const fromZ = actor.root.position.z;
-  if (Math.hypot(fromX - x, fromZ - z) <= SAME_POINT) {
+  if (samePoint(fromX, fromZ, x, z)) {
     actor.route = null;
     actor.root.position.x = x;
     actor.root.position.z = z;
@@ -176,22 +203,31 @@ function steerRoute(actor: Actor, x: number, z: number, now: number): void {
   };
 }
 
-/** Position sur le trajet. `false` une fois la dernière case atteinte. */
+/**
+ * Position sur le trajet. Les cases déjà franchies sortent du trajet,
+ * donc une case ancienne n'est plus confondue avec la suivante.
+ * `false` une fois la dernière case atteinte.
+ */
 function followRoute(actor: Actor, now: number): boolean {
   const route = actor.route;
-  const segments = route ? route.points.length - 1 : 0;
-  const end = route?.points[segments];
-  if (!route || !end || segments <= 0) return false;
-  const elapsed = now - route.start;
-  if (elapsed >= segments * route.segmentMs) {
-    actor.root.position.x = end.x;
-    actor.root.position.z = end.z;
+  if (!route || route.points.length < 2) return false;
+  let elapsed = now - route.start;
+  while (route.points.length > 2 && elapsed >= route.segmentMs) {
+    route.points.shift();
+    route.start += route.segmentMs;
+    elapsed -= route.segmentMs;
+  }
+  const from = route.points[0];
+  const to = route.points[1];
+  if (!from || !to) return false;
+  if (elapsed >= route.segmentMs) {
+    actor.root.position.x = to.x;
+    actor.root.position.z = to.z;
+    route.points = [to];
+    route.start += route.segmentMs;
     return false;
   }
-  const segment = Math.min(segments - 1, Math.floor(elapsed / route.segmentMs));
-  const t = (elapsed - segment * route.segmentMs) / route.segmentMs;
-  const from = route.points[segment] ?? end;
-  const to = route.points[segment + 1] ?? end;
+  const t = Math.min(1, Math.max(0, elapsed / route.segmentMs));
   actor.root.position.x = from.x + (to.x - from.x) * t;
   actor.root.position.z = from.z + (to.z - from.z) * t;
   return true;
@@ -294,7 +330,7 @@ export class Figurines {
     this.blitz = new BlitzAura(scene);
   }
 
-  sync(game: GameJson, surfaceY: number): void {
+  sync(game: GameJson, surfaceY: number, cut = false): void {
     const noted = noteActingSide(game, this.actingSide, this.actingGameId);
     this.actingSide = noted.side;
     this.actingGameId = noted.gameId;
@@ -322,7 +358,7 @@ export class Figurines {
           actor.targetZ = aim.z;
         }
         actor.walkMovedAt = walkMovedAt;
-        if (route) actor.route = route;
+        if (route && !cut) actor.route = route;
         this.actors.set(place.id, actor);
         this.group.add(actor.root);
       } else {
@@ -333,6 +369,7 @@ export class Figurines {
       }
       const actor = this.actors.get(place.id);
       if (!actor) continue;
+      if (cut) actor.route = null;
       const waiting = this.parkExit(actor, place);
       if (!waiting) adoptPlace(actor, place);
       paintPawnOpacity(actor.pawn, place.acted);
@@ -348,6 +385,16 @@ export class Figurines {
       this.actors.delete(id);
       this.pitchExits.delete(id);
     }
+  }
+
+  /**
+   * La case suivante est déjà dans le flux : on l'ajoute avant que le pied se pose,
+   * pour traverser le centre sans temps d'arrêt. Sans effet si ce n'est pas la suite.
+   */
+  extendWalk(id: string, x: number, z: number): void {
+    const actor = this.actors.get(id);
+    if (!actor) return;
+    extendChain(actor, x, z, performance.now());
   }
 
   /**
