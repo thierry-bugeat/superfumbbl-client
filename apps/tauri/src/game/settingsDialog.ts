@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-/** Settings rail, in this order. */
+/** Owner 11-03 settings reflow: 13 tabs in a scrollable rail, in this order (the agreed mock). */
 export const SETTINGS_SECTIONS = [
   { id: 'general', get label() { return t('settings.settingsSections.general'); } },
   { id: 'controls', get label() { return t('settings.settingsSections.controls'); } },

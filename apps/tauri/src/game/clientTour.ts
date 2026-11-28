@@ -144,7 +144,7 @@ const BAR: Record<string, { anchor: string; label: string; body: string }> = {
   'hud-bar-report': { anchor: 'hud-report', get label() { return $t('tour.bar.report'); }, get body() { return $t('tour.bar.sendsMeABug'); } },
 };
 
-/** One line per Settings tab, in rail order. */
+/** One line per Settings tab (owner 11-03 reflow: all 13 tabs, Controls included, in rail order). */
 export const SETTINGS_LINES: Record<SettingsTab, string> = {
   get general() { return $t('tour.settingsLines.general'); },
   get controls() { return $t('tour.settingsLines.controls'); },
