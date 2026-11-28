@@ -4,8 +4,9 @@
  * 1. Aucun import interdit dans packages/ffb-pitch3d/src, ni aucun chemin relatif qui en sort.
  *    Vus : from / import / export from / require, import(), import.meta.glob (chaîne ou tableau,
  *    y compris un .glob<…>() après un transtypage) et new URL('…', import.meta.url).
- * 2. Aucun fichier protégé (protocole, rendu 2D, vue spectateur, replay) modifié
- *    par rapport à upstream/main, arbre de travail compris.
+ * 2. Aucun fichier modifié, supprimé ou renommé sous apps/tauri/ ou packages/,
+ *    hors du moteur 3D et de la page 3D, par rapport à upstream/main (arbre de travail compris).
+ *    Un fichier ajouté n'est pas protégé, où qu'il soit.
  *    apps/tauri/package.json et pnpm-lock.yaml sont les deux exceptions prévues.
  *    Les autres se déclarent une par une dans client-2d-exceptions.json, avec leur raison.
  *
@@ -50,16 +51,20 @@ export function leavesPackage(file, specifier, packageDir = PACKAGE_DIR) {
   return resolved !== packageDir && !resolved.startsWith(root);
 }
 
-/** pnpm-lock.yaml et apps/tauri/package.json sont les seules modifications hors fichiers neufs autorisées. */
-export function isProtectedPath(file) {
+/**
+ * Un fichier ajouté (`A`) n'est pas protégé. Un fichier modifié, supprimé ou renommé
+ * (`M`, `D`, `R`) l'est s'il est sous `apps/tauri/` ou `packages/`, hors moteur 3D et page 3D.
+ * `pnpm-lock.yaml` et `apps/tauri/package.json` restent les deux exceptions prévues.
+ * Sans statut, le chemin est jugé comme modifié.
+ */
+export function isProtectedPath(file, status = 'M') {
   const path = file.replaceAll('\\', '/');
   if (path === 'pnpm-lock.yaml' || path === 'apps/tauri/package.json') return false;
-  return path.startsWith('packages/ffb-protocol/')
-    || path.startsWith('packages/ffb-pitch/')
-    || path === 'apps/tauri/src/views/SpectateView.vue'
-    || path === 'apps/tauri/src/game/store.ts'
-    || path === 'apps/tauri/src/App.vue'
-    || path.startsWith('apps/tauri/src/game/replay/');
+  const kind = status.charAt(0);
+  if (kind !== 'M' && kind !== 'D' && kind !== 'R') return false;
+  if (path.startsWith('packages/ffb-pitch3d/')) return false;
+  if (path.startsWith('apps/tauri/src/dev/spectate3d/')) return false;
+  return path.startsWith('apps/tauri/') || path.startsWith('packages/');
 }
 
 const EXCEPTIONS_FILE = join(SCRIPT_DIR, 'client-2d-exceptions.json');
@@ -80,11 +85,13 @@ export function readExceptions(file = EXCEPTIONS_FILE) {
     .filter(([, reason]) => typeof reason === 'string' && reason.trim().length > 0));
 }
 
-/** Fichiers protégés modifiés sans dérogation écrite. */
+/** Fichiers protégés modifiés sans dérogation écrite. Une chaîne est un fichier modifié. */
 export function unjustifiedChanges(files, exceptions) {
-  return files
-    .map((file) => file.replaceAll('\\', '/'))
-    .filter((path) => isProtectedPath(path) && !exceptions.has(path));
+  return files.flatMap((file) => {
+    const entry = typeof file === 'string' ? { path: file, status: 'M' } : file;
+    const path = entry.path.replaceAll('\\', '/');
+    return isProtectedPath(path, entry.status) && !exceptions.has(path) ? [path] : [];
+  });
 }
 
 function walk(dir) {
@@ -182,18 +189,42 @@ export function scanImports(srcDir, packageDir = PACKAGE_DIR) {
   return hits;
 }
 
-function changedFiles() {
-  const args = [
-    ['diff', '--name-only', 'upstream/main'],
-    ['diff', '--name-only', '--cached', 'upstream/main'],
-    ['ls-files', '--others', '--exclude-standard'],
-  ];
-  const names = new Set();
-  for (const gitArgs of args) {
-    const out = execFileSync('git', gitArgs, { cwd: REPO_ROOT, encoding: 'utf8' });
-    for (const line of out.split('\n')) if (line) names.add(line);
+function statusRank(status) {
+  const kind = status.charAt(0);
+  return kind === 'M' || kind === 'D' || kind === 'R' ? 2 : 1;
+}
+
+function remember(changes, status, path) {
+  if (!path) return;
+  const normalized = path.replaceAll('\\', '/');
+  const previous = changes.get(normalized);
+  if (!previous || statusRank(status) > statusRank(previous)) changes.set(normalized, status);
+}
+
+function readNameStatus(gitArgs, changes) {
+  const out = execFileSync('git', gitArgs, { cwd: REPO_ROOT, encoding: 'utf8' });
+  for (const line of out.split('\n')) {
+    if (!line) continue;
+    const [status, first, second] = line.split('\t');
+    if (status.startsWith('R') || status.startsWith('C')) {
+      remember(changes, status, second);
+      if (isProtectedPath(first, 'D') && !isProtectedPath(second, status)) remember(changes, 'D', first);
+    } else {
+      remember(changes, status, first);
+    }
   }
-  return [...names];
+}
+
+function changedFiles() {
+  const changes = new Map();
+  readNameStatus(['diff', '--name-status', 'upstream/main'], changes);
+  readNameStatus(['diff', '--name-status', '--cached', 'upstream/main'], changes);
+  const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+  });
+  for (const line of untracked.split('\n')) if (line) remember(changes, 'A', line);
+  return [...changes].map(([path, status]) => ({ path, status }));
 }
 
 function fail(lines) {
@@ -220,6 +251,12 @@ function selfTest() {
   if (unjustifiedChanges(['apps/tauri/src/App.vue'], new Map()).length !== 1) failures.push('sans liste, la dérogation ne doit pas être implicite');
   if (unjustifiedChanges(['apps/tauri/src/game/store.ts'], granted).length !== 1) failures.push('modification non dérogée non détectée');
   if (unjustifiedChanges(['apps/tauri/src/dev/spectate3d/main.ts'], new Map()).length) failures.push('la page 3D est protégée à tort');
+  if (unjustifiedChanges([{ path: 'apps/tauri/src/game/settings.ts', status: 'M' }], new Map()).length !== 1) {
+    failures.push('fichier 2D modifié non déclaré non détecté');
+  }
+  if (unjustifiedChanges([{ path: 'apps/tauri/src/game/spectate3dSession.ts', status: 'A' }], new Map()).length) {
+    failures.push('fichier ajouté dans game/ protégé à tort');
+  }
 
   const dir = mkdtempSync(join(tmpdir(), 'pitch3d-probe-'));
   try {
@@ -289,8 +326,8 @@ function runGuard() {
     }
     fail(lines);
   } else {
-    for (const file of changed.map((f) => f.replaceAll('\\', '/')).filter((f) => exceptions.has(f))) {
-      console.log(`dérogation : ${file} — ${exceptions.get(file)}`);
+    for (const { path } of changed.filter((entry) => exceptions.has(entry.path))) {
+      console.log(`dérogation : ${path} — ${exceptions.get(path)}`);
     }
     console.log('garde-fou ok');
   }

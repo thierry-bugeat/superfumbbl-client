@@ -1,3 +1,11 @@
 {
-  "apps/tauri/src/App.vue": "Monte <Spectate3dFrame> dans la coquille. 24 lignes ajoutées, aucune ligne existante modifiée : la page 3D n'a pas d'autre point d'accroche dans l'application."
+  "apps/tauri/src/App.vue": "Monte <Spectate3dFrame> et l'onglet Expérimental des réglages. Purement additif.",
+  "apps/tauri/src/views/console/PlayView.vue": "Boutons « Replay 3D » et « Ouvrir un JNLP en 3D », visibles seulement avec les fonctions expérimentales. Purement additif.",
+  "apps/tauri/src/views/console/SpectateBrowserView.vue": "Bouton « Spectate 3D » à côté de chaque bouton Spectate, visible seulement avec les fonctions expérimentales.",
+  "apps/tauri/src/game/settings.ts": "Réglage experimentalFeatures, faux par défaut. Purement additif.",
+  "apps/tauri/src/game/settingsDialog.ts": "Onglet Expérimental dans la liste des réglages. Purement additif.",
+  "apps/tauri/src/game/clientTour.ts": "Ligne de visite pour l'onglet Expérimental, exigée par le type SettingsTab. Purement additif.",
+  "apps/tauri/src/i18n/locales/en.json": "Clés spectate3d.* et celles des boutons ci-dessus. Purement additif.",
+  "apps/tauri/src/i18n/locales/fr.json": "Clés spectate3d.* et celles des boutons ci-dessus, en français. Purement additif.",
+  "apps/tauri/vite.config.ts": "Seconde entrée spectate3d.html et cible ES2022 qu'exige son await de premier niveau ; hôte de la démo HAProxy."
 }
