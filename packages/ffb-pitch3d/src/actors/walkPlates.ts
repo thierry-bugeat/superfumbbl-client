@@ -1,10 +1,8 @@
 /**
  * Repli des races sans atlas illustré : case au repos des sprites de marche.
  * Face = ligne 1, colonne 1 (sud). Dos = ligne 5, colonne 1 (nord).
- * Les fichiers restent dans ffb-pitch ; ce module ne l'importe pas.
+ * Les feuilles viennent de l'application, via {@link setWalkSheets} : ce module ne va pas les chercher.
  */
-
-type UrlGlob = <T>(pattern: string, options: { eager: true; query: '?url'; import: 'default' }) => Record<string, T>;
 
 const COLUMNS = 9;
 const ROWS = 8;
@@ -13,11 +11,13 @@ const BACK_ROW = 4;
 /** Hauteur monde d'une case entière. Le personnage rogné est une fraction de ça. */
 const FRAME_WORLD = 1.5;
 
-const walkUrls = (import.meta as unknown as { glob: UrlGlob }).glob<string>('../../../ffb-pitch/assets/walk/*/*.png', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-});
+let walkUrls: Readonly<Record<string, string>> = {};
+
+/** Sprites de marche des races sans atlas illustré, chemin source → URL. Fournis par l'application. */
+export function setWalkSheets(urls: Readonly<Record<string, string>>): void {
+  walkUrls = urls;
+  indexSheets();
+}
 
 const ROLE_ALIASES: Record<string, Record<string, string>> = {
   human: {
@@ -75,18 +75,25 @@ interface Sheet {
 const sheets: Sheet[] = [];
 const rolesByRace = new Map<string, Set<string>>();
 
-for (const [path, url] of Object.entries(walkUrls)) {
-  const match = path.match(/\/walk\/([^/]+)\/([^/]+)-(home|away)\.png$/);
-  if (!match || !match[1] || !match[2] || (match[3] !== 'home' && match[3] !== 'away')) continue;
-  const race = match[1];
-  const role = match[2];
-  sheets.push({ race, role, side: match[3], url });
-  let roles = rolesByRace.get(race);
-  if (!roles) {
-    roles = new Set();
-    rolesByRace.set(race, roles);
+/** Derniers segments `race/rôle-côté.png`, quel que soit le préfixe donné par l'application. */
+const SHEET_PATH = /(?:^|\/)([^/]+)\/([^/]+)-(home|away)\.png$/;
+
+function indexSheets(): void {
+  sheets.length = 0;
+  rolesByRace.clear();
+  for (const [path, url] of Object.entries(walkUrls)) {
+    const match = path.replaceAll('\\', '/').match(SHEET_PATH);
+    if (!match || !match[1] || !match[2] || (match[3] !== 'home' && match[3] !== 'away')) continue;
+    const race = match[1];
+    const role = match[2];
+    sheets.push({ race, role, side: match[3], url });
+    let roles = rolesByRace.get(race);
+    if (!roles) {
+      roles = new Set();
+      rolesByRace.set(race, roles);
+    }
+    roles.add(role);
   }
-  roles.add(role);
 }
 
 function normalize(value: string): string {

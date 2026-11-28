@@ -18,4 +18,4 @@ export {
   type SpectatorState,
 } from './actors/spectatorCrowd';
 export { portraitCrop } from './actors/atlases';
-export { walkPortrait } from './actors/walkPlates';
+export { setWalkSheets, walkPortrait } from './actors/walkPlates';

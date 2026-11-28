@@ -1,5 +1,5 @@
 import { d6FaceUrl, isD6FaceValue } from '@fumbbl40k/ffb-pitch/src/d6';
-import { MOVE_SQUARE_MS, Pitch3D, injuryRevealMs, noteActingSide, type PitchDiagnostics } from '@fumbbl40k/ffb-pitch3d';
+import { MOVE_SQUARE_MS, Pitch3D, injuryRevealMs, noteActingSide, setWalkSheets, type PitchDiagnostics } from '@fumbbl40k/ffb-pitch3d';
 import type { GameJson, TeamJson, TurnDataJson } from '@fumbbl40k/ffb-protocol';
 import { terms } from '../../i18n/terms';
 import { crestDataUrl } from '../../game/teamCrests';
@@ -92,6 +92,14 @@ function revealStage(): void {
   }, { once: true });
   window.setTimeout(finish, 450);
 }
+
+const walkSheets = import.meta.glob<string>('../../../../../packages/ffb-pitch/assets/walk/*/*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+});
+if (!Object.keys(walkSheets).length) console.warn('[spectate3d] aucun sprite de marche trouvé dans ffb-pitch/assets/walk');
+setWalkSheets(walkSheets);
 
 const pitch = new Pitch3D();
 let paintedChat: readonly CoachChatLine[] | null = null;
