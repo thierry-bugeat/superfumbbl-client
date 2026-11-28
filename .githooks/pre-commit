@@ -1,0 +1,3 @@
+#!/bin/sh
+# Porte annoncée par fdd3675 : le commit est refusé si le garde-fou ou le typecheck échoue.
+exec pnpm check
