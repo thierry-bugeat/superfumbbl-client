@@ -81,9 +81,12 @@ async function keychainSecret(account: string): Promise<string> {
  * Le direct se branche sur le même serveur que le replay affiché, c'est-à-dire FUMBBL, et sous le
  * coach reçu dans l'URL. Le mot de passe n'est donc repris que s'il appartient bien à ce compte :
  * le secret du compte Super FUMBBL n'a rien à faire sur le socket de FUMBBL.
+ *
+ * Le serveur n'est pas lu dans l'URL. Un paramètre permettrait à un lien de faire envoyer le coach
+ * et la réponse au challenge de mot de passe vers un serveur tiers.
  */
 export async function resolveLiveCredentials(search: URLSearchParams): Promise<LiveCredentials> {
-  const url = search.get('wsUrl')?.trim() || FUMBBL_REPLAY_URL;
+  const url = FUMBBL_REPLAY_URL;
   const blob = readSettingsBlob();
   const compression = typeof blob.compression === 'boolean' ? blob.compression : true;
   const coach = search.get('coach')?.trim() ?? '';
